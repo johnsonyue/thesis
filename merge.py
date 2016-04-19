@@ -41,6 +41,24 @@ class dag:
 		r = node(root);
 		self.node.append(r);
 		self.dict[root] = 0;
+		
+		#rtt.
+		self.max_rtt = 0;
+		self.min_rtt = 10000;
+		self.rtt_list = [];
+		self.rtt_dist_x = [];
+		self.rtt_dist_y = [];
+
+
+		#deg.
+		self.degree_list = [];
+		self.deg_dist_x = [];
+		self.deg_dist_y = [];
+
+		#networkx topo graph.
+		self.graph = nx.Graph();
+		#largest connected component.
+		self.graph0 = nx.Graph();
 
 	def parse_trace(self, trace):
 		if re.findall("#",trace):
@@ -109,60 +127,112 @@ class dag:
 			self.parse_trace(line);
 			self.num_traces = self.num_traces + 1;
 		f.close();
+
+		for i in range(len(self.node)-1,-1,-1):
+			self.graph.add_node(i);
+			for j in range(len(self.node[i].child)):
+				self.graph.add_edge(i,self.node[i].child[j],weight=self.node[i].child_rtt[j]);
+						
+		#get the largest connected component.
+		self.graph0 = sorted(nx.connected_component_subgraphs(self.graph), key = len, reverse=True)[0];
+
 	def disp_stats(self):
 		print "total traces processed:",self.num_traces;
 		print "total nodes:",len(self.node);
 		print "total edges:",self.num_edges;
 
-	
-	def draw_topo(self, graph_name):
-		graph = nx.Graph();
-
-		for i in range(len(self.node)-1,-1,-1):
-			graph.add_node(i);
-			for j in range(len(self.node[i].child)):
-				graph.add_edge(i,self.node[i].child[j],weight=self.node[i].child_rtt[j]);
-						
-		#get the largest connected component.
-		graph0 = sorted(nx.connected_component_subgraphs(graph), key = len, reverse=True)[0];
-
-		
-
-		
+	def draw_rtt(self, graph_name):
 		#get rtt dist.
-		#get scalar map for weight.
-		rtt_list = [];
-		rtt_dist_x = [];
-		rtt_dist_y = [];
+		self.max_rtt = 0;
+		self.min_rtt = 10000;
+		for a,b in self.graph0.edges():
+			rtt = float(self.graph0[a][b]['weight']);
+			self.rtt_list.append(int(rtt));
+			if self.max_rtt < rtt:
+				self.max_rtt = rtt;
+			if self.min_rtt > rtt:
+				self.min_rtt = rtt;
 		
-
-		max_rtt = 0;
-		min_rtt = 10000;
-		for a,b in graph0.edges():
-			rtt = float(graph0[a][b]['weight']);
-			rtt_list.append(int(rtt));
-			if max_rtt < rtt:
-				max_rtt = rtt;
-			if min_rtt > rtt:
-				min_rtt = rtt;
-		
-		rtt_list.sort();
-		prev_rtt = rtt_list[0];
-		rtt_dist_x.append(prev_rtt);
-		rtt_dist_y.append(1);
+		self.rtt_list.sort();
+		prev_rtt = self.rtt_list[0];
+		self.rtt_dist_x.append(prev_rtt);
+		self.rtt_dist_y.append(1);
 		num_rtt = 0;
 		
-		for i in range( 1,len(rtt_list) ):
-			if rtt_list[i] == prev_rtt:
-				rtt_dist_y[num_rtt] = rtt_dist_y[num_rtt] + 1;
+		for i in range( 1,len(self.rtt_list) ):
+			if self.rtt_list[i] == prev_rtt:
+				self.rtt_dist_y[num_rtt] = self.rtt_dist_y[num_rtt] + 1;
 			else:
-				prev_rtt = rtt_list[i];
-				rtt_dist_x.append(rtt_list[i]);
-				rtt_dist_y.append(1);
+				prev_rtt = self.rtt_list[i];
+				self.rtt_dist_x.append(self.rtt_list[i]);
+				self.rtt_dist_y.append(1);
 				num_rtt = num_rtt + 1;
+		
+		#draw rtt distribution.
+		plt.figure(figsize=(8,8));
+		plt.yscale('log');
+		plt.xscale('log');
+
+		plt.plot(self.rtt_dist_x, self.rtt_dist_y);
+		plt.savefig(graph_name+"_rtt_dist.png");
+		
+		#draw rtt ccdf.
+		plt.figure(figsize=(8,8));
+		plt.yscale('log');
+		plt.xscale('log');
+
+		plt.plot( self.rtt_dist_x, np.cumsum(self.rtt_dist_y) );
+		plt.savefig(graph_name+"_rtt_ccdf.png");
+
+	def draw_deg(self, graph_name):
+		#get degree dist.
+		for n in self.graph0.nodes():
+			degree = self.node[n].indegree+len(self.node[n].child);
+			self.degree_list.append(degree);
+		
+		temp_list = sorted(self.degree_list);
+		prev_deg = temp_list[0];
+		self.deg_dist_x.append(prev_deg);
+		self.deg_dist_y.append(1);
+		num_deg = 0;
+		
+		for i in range( 1,len(temp_list) ):
+			if temp_list[i] == prev_deg:
+				self.deg_dist_y[num_deg] = self.deg_dist_y[num_deg] + 1;
+			else:
+				prev_deg = temp_list[i];
+				self.deg_dist_x.append(temp_list[i]);
+				self.deg_dist_y.append(1);
+				num_deg = num_deg + 1;
+
+		
+		#draw deg distribution.
+		plt.figure(figsize=(8,8));
+		plt.yscale('log');
+		plt.xscale('log');
+
+		plt.plot(self.deg_dist_x, self.deg_dist_y);
+		plt.savefig(graph_name+"_deg_dist.png");
+		
+	def draw_path(self,graph_name):
+		#draw path len distribution.
+		plt.figure(figsize=(8,8));
+
+		plt.plot([ i for i in range( 1,len(self.path_len_dist)+1 ) ], self.path_len_dist);
+		plt.savefig(graph_name+"_path_len_dist.png");
+		
+		#draw path len ccdf.
+		plt.figure(figsize=(8,8));
+
+		plt.plot([ i for i in range( 1,len(self.path_len_dist)+1 ) ], np.cumsum(self.path_len_dist));
+		plt.savefig(graph_name+"_path_len_ccdf.png");
 
 
-		if max_rtt > 100:
+	def draw_topo(self, graph_name):
+		#get scalar map for weight.
+		max_rtt = self.max_rtt;
+		min_rtt = self.min_rtt;
+		if self.max_rtt > 100:
 			max_rtt = 100;
 		rtt_norm = clrs.Normalize(vmin=min_rtt, vmax=max_rtt);
 		#use gist_rainbow color map to convert gray scale value to colored rgb.
@@ -170,83 +240,28 @@ class dag:
 
 		#get colors from the scalar map.
 		colors = []; 
-		for a,b in graph0.edges():
-			rgb = scalar_map.to_rgba(graph0[a][b]['weight']);
+		for a,b in self.graph0.edges():
+			rgb = scalar_map.to_rgba(self.graph0[a][b]['weight']);
 			colors.append(rgb);
+		
 
-		
-		
-		#get degree dist.
 		#get lablels for high degree nodes.
 		labels = {};
 		labels[0] = "root:",self.node[0].addr;
-		
-		degree_list = [];
-		deg_dist_x = [];
-		deg_dist_y = [];
-		
-		for n in graph0.nodes():
-			degree = self.node[n].indegree+len(self.node[n].child);
-			degree_list.append(degree);
+
+		for i in range( len(self.degree_list) ):
+			degree = self.degree_list[i];
 			if  degree > 20:
-				labels[n] = self.node[n].addr+" ("+str(degree)+")";
+				labels[i] = self.node[i].addr+" ("+str(degree)+")";
 		
-		degree_list.sort();
-		prev_deg = degree_list[0];
-		deg_dist_x.append(prev_deg);
-		deg_dist_y.append(1);
-		num_deg = 0;
-		
-		for i in range( 1,len(degree_list) ):
-			if degree_list[i] == prev_deg:
-				deg_dist_y[num_deg] = deg_dist_y[num_deg] + 1;
-			else:
-				prev_deg = degree_list[i];
-				deg_dist_x.append(degree_list[i]);
-				deg_dist_y.append(1);
-				num_deg = num_deg + 1;
-			
 		#use graphviz layout to get a hierachical view of the topo.
 		plt.figure(figsize=(50,50));
-		layout = nx.graphviz_layout(graph0,prog="twopi",root=0);
+		layout = nx.graphviz_layout(self.graph0,prog="twopi",root=0);
 
 		#draw topo graph.
-		nx.draw(graph0,layout,with_labels=False,alpha=0.5,node_size=15,edge_color=colors);
-		nx.draw_networkx_labels(graph0,layout,labels,font_size=10);
+		nx.draw(self.graph0,layout,with_labels=False,alpha=0.5,node_size=15,edge_color=colors);
+		nx.draw_networkx_labels(self.graph0,layout,labels,font_size=10);
 		plt.savefig(graph_name+"_topo.png",dpi=300);
-		
-		#draw deg distribution.
-		plt.figure(figsize=(8,8));
-		plt.plot(deg_dist_x, deg_dist_y);
-		plt.savefig(graph_name+"_deg_dist.png");
-		
-		#draw deg ccdf.
-		plt.figure(figsize=(8,8));
-		plt.plot( deg_dist_x, np.cumsum(deg_dist_y) );
-		plt.savefig(graph_name+"_deg_ccdf.png");
-
-		#draw deg distribution.
-		plt.figure(figsize=(8,8));
-		plt.plot(rtt_dist_x, rtt_dist_y);
-		plt.savefig(graph_name+"_rtt_dist.png");
-		
-		#draw deg ccdf.
-		plt.figure(figsize=(8,8));
-		plt.plot( rtt_dist_x, np.cumsum(rtt_dist_y) );
-		plt.savefig(graph_name+"_rtt_ccdf.png");
-
-		#draw path len distribution.
-		plt.figure(figsize=(8,8));
-		plt.plot([ i for i in range( 1,len(self.path_len_dist)+1 ) ], self.path_len_dist);
-		plt.savefig(graph_name+"_path_len_dist.png");
-		
-		#draw path len ccdf.
-		plt.figure(figsize=(8,8));
-		plt.plot([ i for i in range( 1,len(self.path_len_dist)+1 ) ], np.cumsum(self.path_len_dist));
-		plt.savefig(graph_name+"_path_len_ccdf.png");
-
-
-
 		
 def get_src(file_name):
 	f = open(file_name,'r');
@@ -266,6 +281,11 @@ def main(argv):
 	topo = dag(get_src(argv[1]));
 	topo.build(argv[1]);
 	topo.disp_stats();
+
+	topo.draw_path(argv[2]);
+	topo.draw_rtt(argv[2]);
+	topo.draw_deg(argv[2]);
+
 	topo.draw_topo(argv[2]);
 
 if __name__ == "__main__":
