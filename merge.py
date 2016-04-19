@@ -1,5 +1,6 @@
 import sys
 import re
+import time
 
 import matplotlib
 matplotlib.use("Agg");
@@ -12,19 +13,23 @@ import numpy as np
 import networkx as nx
 from networkx import graphviz_layout
 
+import geoip2.database
+
 
 #class node represents a node in topo graph.
 class node:
 	def __init__(self,ip):
 		self.addr = ip;
+		self.country_code = "";
 		self.child = [];
 		self.child_rtt = [];
 		
 		self.indegree = 0;
 
-#topo graph is a directed acyclic graph.
-class dag:
+#topo graph is a directed graph.
+class topo_graph:
 	def __init__(self, root):
+		#nodes.
 		self.node = [];
 		#dict for quick node lookup.
 		self.dict = {};
@@ -48,7 +53,6 @@ class dag:
 		self.rtt_list = [];
 		self.rtt_dist_x = [];
 		self.rtt_dist_y = [];
-
 
 		#deg.
 		self.degree_list = [];
@@ -127,6 +131,22 @@ class dag:
 			self.parse_trace(line);
 			self.num_traces = self.num_traces + 1;
 		f.close();
+		
+		#query country.
+		reader = geoip2.database.Reader('GeoLite2-Country.mmdb');
+		for i in range( len(self.node) ):
+			iso_code = "";
+			try:
+				response = reader.country(self.node[i].addr);
+			except geoip2.errors.AddressNotFoundError:
+				iso_code = "*";
+			finally:
+				if iso_code != "*":
+					iso_code = response.country.iso_code;
+
+			self.node[i].country_code = iso_code;
+
+		reader.close();
 
 		for i in range(len(self.node)-1,-1,-1):
 			self.graph.add_node(i);
@@ -229,6 +249,7 @@ class dag:
 
 
 	def draw_topo(self, graph_name):
+		print "\tsetting colors for edges... ",;
 		#get scalar map for weight.
 		max_rtt = self.max_rtt;
 		min_rtt = self.min_rtt;
@@ -238,30 +259,52 @@ class dag:
 		#use gist_rainbow color map to convert gray scale value to colored rgb.
 		scalar_map = cm.ScalarMappable(norm=rtt_norm,cmap=plt.cm.gist_rainbow); 
 
-		#get colors from the scalar map.
+		#get edge colors from the scalar map.
 		colors = []; 
 		for a,b in self.graph0.edges():
 			rgb = scalar_map.to_rgba(self.graph0[a][b]['weight']);
 			colors.append(rgb);
+		print "done";
 		
 
+		print "\tsetting labels for nodes... ",;
 		#get lablels for high degree nodes.
 		labels = {};
 		labels[0] = "root:",self.node[0].addr;
 
-		for i in range( len(self.degree_list) ):
-			degree = self.degree_list[i];
-			if  degree > 20:
-				labels[i] = self.node[i].addr+" ("+str(degree)+")";
+		for n in self.graph0.nodes():
+			degree = self.node[n].indegree+len(self.node[n].child);
+			if degree > 20:
+				labels[n] = self.node[n].addr+" ("+str(degree)+")";
+
+		print "done";
 		
+		print "\texecuting graphviz... ",;
 		#use graphviz layout to get a hierachical view of the topo.
 		plt.figure(figsize=(50,50));
 		layout = nx.graphviz_layout(self.graph0,prog="twopi",root=0);
+		print "done";
 
+		print "\tsaving pic.. ",;
 		#draw topo graph.
 		nx.draw(self.graph0,layout,with_labels=False,alpha=0.5,node_size=15,edge_color=colors);
 		nx.draw_networkx_labels(self.graph0,layout,labels,font_size=10);
 		plt.savefig(graph_name+"_topo.png",dpi=300);
+		print "done";
+	
+	def dfs(self, root, path):
+		path.append(root);
+		is_loop = False;
+		for i in range(len(self.node[root].child)):
+			for n in path:
+				if n == root:
+					print "loop found";
+					is_loop = True;
+					break;
+			if self.dfs(self.node[root].child[i], path):
+				break;	
+
+		return is_loop;
 		
 def get_src(file_name):
 	f = open(file_name,'r');
@@ -278,15 +321,42 @@ def main(argv):
 		print "usage:python merge.py <dump_file_name> <output_prefix>";
 		return;
 
-	topo = dag(get_src(argv[1]));
+	topo = topo_graph(get_src(argv[1]));
+	
+	print "building..., ",;
+	start_time = time.time();
 	topo.build(argv[1]);
+	end_time = time.time();
+	print (end_time - start_time)*1000,"ms";
 	topo.disp_stats();
-
+	
+	print "drawing path..., ",;
+	start_time = time.time();
 	topo.draw_path(argv[2]);
-	topo.draw_rtt(argv[2]);
-	topo.draw_deg(argv[2]);
+	end_time = time.time();
+	print (end_time - start_time)*1000,"ms";
 
-	topo.draw_topo(argv[2]);
+	#call draw_rtt to get max_rtt & min_rtt & dist_rtt.
+	print "drawing rtt..., ",;
+	start_time = time.time();
+	topo.draw_rtt(argv[2]);
+	end_time = time.time();
+	print (end_time - start_time)*1000,"ms";
+
+	#call draw_deg to get  dist deg.
+	print "drawing deg..., ",;
+	start_time = time.time();
+	topo.draw_deg(argv[2]);
+	end_time = time.time();
+	print (end_time - start_time)*1000,"ms";
+
+	print "drawing topo..., ";
+	start_time = time.time();
+	#topo.draw_topo(argv[2]);
+	end_time = time.time();
+	print "\t",(end_time - start_time)*1000,"ms";
+	
+	topo.dfs(0,[]);
 
 if __name__ == "__main__":
 	main(sys.argv);
