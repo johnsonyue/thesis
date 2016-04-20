@@ -21,6 +21,7 @@ class node:
 	def __init__(self,ip):
 		self.addr = ip;
 		self.country_code = "";
+		self.is_border = False;
 		self.child = [];
 		self.child_rtt = [];
 		
@@ -41,6 +42,7 @@ class topo_graph:
 		#add root.
 		self.num_edges = 0;
 		self.num_nodes = 1;
+		self.num_border = 0;
 		self.prev_index = -1;
 
 		r = node(root);
@@ -248,7 +250,7 @@ class topo_graph:
 		plt.savefig(graph_name+"_path_len_ccdf.png");
 
 
-	def draw_topo(self, graph_name):
+	def draw_topo_graphviz(self, graph_name):
 		print "\tsetting colors for edges... ",;
 		#get scalar map for weight.
 		max_rtt = self.max_rtt;
@@ -260,10 +262,20 @@ class topo_graph:
 		scalar_map = cm.ScalarMappable(norm=rtt_norm,cmap=plt.cm.gist_rainbow); 
 
 		#get edge colors from the scalar map.
-		colors = []; 
+		edge_colors = []; 
 		for a,b in self.graph0.edges():
 			rgb = scalar_map.to_rgba(self.graph0[a][b]['weight']);
-			colors.append(rgb);
+			edge_colors.append(rgb);
+		print "done";
+		
+		
+		print "\tsetting colors for nodes... ",;
+		node_colors = [];
+		for n in self.graph0.nodes():
+			color = 'r'
+			if self.node[n].is_border:
+				color = 'b';
+			node_colors.append(color);
 		print "done";
 		
 
@@ -287,24 +299,35 @@ class topo_graph:
 
 		print "\tsaving pic.. ",;
 		#draw topo graph.
-		nx.draw(self.graph0,layout,with_labels=False,alpha=0.5,node_size=15,edge_color=colors);
+		nx.draw(self.graph0,layout,with_labels=False,alpha=0.5,node_size=15,edge_color=edge_colors,node_color=node_colors);
 		nx.draw_networkx_labels(self.graph0,layout,labels,font_size=10);
 		plt.savefig(graph_name+"_topo.png",dpi=300);
 		print "done";
 	
-	def dfs(self, root, path):
+	def recursive_mark(self, path, parent_code, root):
 		path.append(root);
-		is_loop = False;
-		for i in range(len(self.node[root].child)):
-			for n in path:
-				if n == root:
-					print "loop found";
+		root_code = self.node[root].country_code;
+		if root_code == None or root_code == "*":
+			root_code = parent_code;
+		if root_code != parent_code:
+			self.node[root].is_border = True;
+		
+		for c in self.node[root].child:
+			child_code = self.node[c].country_code;
+			if child_code != None and child_code != "*" and root_code != child_code:
+				self.node[root].is_border = True;
+
+			is_loop = False;
+			for p in path:
+				if p == c:
 					is_loop = True;
 					break;
-			if self.dfs(self.node[root].child[i], path):
-				break;	
+			
+			if not is_loop:
+				self.recursive_mark(path, root_code, c);
 
-		return is_loop;
+		if self.node[root].is_border:
+			self.num_border = self.num_border + 1;
 		
 def get_src(file_name):
 	f = open(file_name,'r');
@@ -343,20 +366,27 @@ def main(argv):
 	end_time = time.time();
 	print (end_time - start_time)*1000,"ms";
 
-	#call draw_deg to get  dist deg.
+	#call draw_deg to get dist deg.
 	print "drawing deg..., ",;
 	start_time = time.time();
 	topo.draw_deg(argv[2]);
 	end_time = time.time();
 	print (end_time - start_time)*1000,"ms";
 
+	#mark border.
+	print "marking border..., ";
+	start_time = time.time();
+	topo.recursive_mark([], topo.node[0].country_code, 0);
+	end_time = time.time();
+	print "\tborder ip num:", topo.num_border;
+	print "\t",(end_time - start_time)*1000,"ms";
+
 	print "drawing topo..., ";
 	start_time = time.time();
-	#topo.draw_topo(argv[2]);
+	topo.draw_topo_graphviz(argv[2]);
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
 	
-	topo.dfs(0,[]);
-
+	
 if __name__ == "__main__":
 	main(sys.argv);
