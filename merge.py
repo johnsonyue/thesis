@@ -22,6 +22,10 @@ class node:
 		self.addr = ip;
 		self.country_code = "";
 		self.is_border = False;
+		self.loc_desc = "";
+		self.lon = 0;
+		self.lat = 0;
+
 		self.child = [];
 		self.child_rtt = [];
 		
@@ -135,18 +139,41 @@ class topo_graph:
 		f.close();
 		
 		#query country.
-		reader = geoip2.database.Reader('GeoLite2-Country.mmdb');
+		reader = geoip2.database.Reader('GeoLite2-City.mmdb');
 		for i in range( len(self.node) ):
+			is_found = True;
 			iso_code = "";
+			loc_desc_list = ["*","*","*"];
+
+			lon = 0;
+			lat = 0;
 			try:
-				response = reader.country(self.node[i].addr);
+				response = reader.city(self.node[i].addr);
 			except geoip2.errors.AddressNotFoundError:
-				iso_code = "*";
+				is_found = False;
 			finally:
-				if iso_code != "*":
+				if not is_found:
+					iso_code = "*";
+					loc_desc = "*";
+				else:
+					lon = response.location.longitude;
+					lat = response.location.latitude;
+					
 					iso_code = response.country.iso_code;
+					city_name = response.city.name;
+					subdiv_name = response.subdivisions.most_specific.name;
+					loc_desc_list = ["*","*","*"];
+					if city_name != None:
+						loc_desc_list[0] = city_name;
+					if subdiv_name != None:
+						loc_desc_list[1] = subdiv_name;
+					if iso_code != None:
+						loc_desc_list[2] = iso_code;
 
 			self.node[i].country_code = iso_code;
+			self.node[i].loc_desc = loc_desc_list[0]+","+loc_desc_list[1]+","+loc_desc_list[2];
+			self.node[i].lon = lon;
+			self.node[i].lat = lat;
 
 		reader.close();
 
