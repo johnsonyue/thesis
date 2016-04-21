@@ -15,6 +15,7 @@ from networkx import graphviz_layout
 
 import geoip2.database
 
+from mpl_toolkits.basemap import Basemap
 
 #class node represents a node in topo graph.
 class node:
@@ -355,6 +356,74 @@ class topo_graph:
 
 		if self.node[root].is_border:
 			self.num_border = self.num_border + 1;
+	
+	#sample 20 dots on line segment between start and end.
+	def get_dots(self, start ,end):
+		x = [];
+		y = [];
+		delta_x = (end[0] - start[0]);
+		delta_y = (end[1] - start[1]);
+		if start[0] != end[0]:
+			for i in range(21):
+				x.append(start[0] + delta_x/20.0*i);
+				y.append(start[1] + delta_y/delta_x*(x[i]-start[0]));
+		else:
+			for i in range(21):
+				x.append(start[0]);
+				y.append(start[1] + delta_y/20.0*i);
+		return x, y;
+	
+	#added path to avoid looping.
+	def recursive_draw_map(self, path, basemap, parent_lonlat, root):
+		path.append(root);
+		
+		child_lonlat = parent_lonlat;
+		if len( self.node[root].child ) != 0:
+			c0 = self.node[root].child[0];
+			child_lonlat = (self.node[c0].lon, self.node[c0].lat);
+
+		root_lonlat = (self.node[root].lon, self.node[root].lat);
+		if root_lonlat == (0, 0):
+			lon = (parent_lonlat[0]+child_lonlat[0])/2.0;
+			lat = (parent_lonlat[1]+child_lonlat[1])/2.0;
+			root_lonlat = (lon, lat);
+
+		basemap.plot(root_lonlat[0], root_lonlat[1], latlon=True, marker = 'o', markerfacecolor='red', markersize=1.5);
+		x,y = self.get_dots(parent_lonlat, root_lonlat);
+		basemap.plot(x, y, latlon=True, linewidth=0.3, color='r');
+
+		for c in self.node[root].child:
+			is_loop = False;
+			for p in path:
+				if p == c:
+					is_loop = True;
+					break;
+			
+			if not is_loop:
+				self.recursive_draw_map(path, basemap, root_lonlat, c);
+
+	
+	def draw_map(self, graph_name):
+		plt.figure(figsize=(50,50));
+
+		#draw background.
+		m = Basemap( projection = 'mill',\
+		             resolution = 'i',\
+		             llcrnrlon = -180.,\
+		             llcrnrlat = -90.,\
+		             urcrnrlon = 180.,\
+		             urcrnrlat = 90.);
+
+		m.drawmapboundary(fill_color='aqua');
+		m.fillcontinents(color = 'coral', lake_color= 'aqua');
+		m.drawcountries();
+		m.drawparallels(np.arange(-90,90,30), labels=[1,1,0,0], linewidth=0.8, color='g');
+		m.drawmeridians(np.arange(-180,180,30), labels=[0,0,1,1], linewidth=0.8, color='g');
+
+		#draw nodes and paths.
+		self.recursive_draw_map([], m, (self.node[0].lon, self.node[0].lat), 0);
+
+		plt.savefig(graph_name+"_map.png",dpi=300);
 		
 def get_src(file_name):
 	f = open(file_name,'r');
@@ -410,7 +479,13 @@ def main(argv):
 
 	print "drawing topo..., ";
 	start_time = time.time();
-	topo.draw_topo_graphviz(argv[2]);
+	#topo.draw_topo_graphviz(argv[2]);
+	end_time = time.time();
+	print "\t",(end_time - start_time)*1000,"ms";
+	
+	print "drawing map..., ";
+	start_time = time.time();
+	topo.draw_map(argv[2]);
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
 	
