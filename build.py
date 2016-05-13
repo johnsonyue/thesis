@@ -1,4 +1,6 @@
 import sys
+reload(sys);
+sys.setdefaultencoding('utf-8');
 import re
 import time
 
@@ -70,7 +72,13 @@ class topo_graph:
 		self.graph = nx.Graph();
 		#largest connected component.
 		self.graph0 = nx.Graph();
-
+		
+		self.visited = [];
+	
+	def clear_visited(self):
+		for i in range(self.num_nodes):
+			self.visited[i] = False;
+		
 	def parse_trace(self, trace):
 		if re.findall("#",trace):
 			return False;
@@ -185,7 +193,10 @@ class topo_graph:
 						
 		#get the largest connected component.
 		self.graph0 = sorted(nx.connected_component_subgraphs(self.graph), key = len, reverse=True)[0];
-
+		
+		for i in range(self.num_nodes):
+			self.visited.append(False);
+		
 	def disp_stats(self):
 		print "total traces processed:",self.num_traces;
 		print "total nodes:",len(self.node);
@@ -332,8 +343,8 @@ class topo_graph:
 		plt.savefig(graph_name+"_topo.png",dpi=300);
 		print "done";
 	
-	def recursive_mark(self, path, parent_code, root):
-		path.append(root);
+	def recursive_mark(self, parent_code, root):
+		self.visited[root] = True;
 		root_code = self.node[root].country_code;
 		if root_code == None or root_code == "*":
 			root_code = parent_code;
@@ -345,18 +356,12 @@ class topo_graph:
 			if child_code != None and child_code != "*" and root_code != child_code:
 				self.node[root].is_border = True;
 
-			is_loop = False;
-			for p in path:
-				if p == c:
-					is_loop = True;
-					break;
-			
-			if not is_loop:
-				self.recursive_mark(path, root_code, c);
+			if not self.visited[c]:
+				self.recursive_mark(root_code, c);
 
 		if self.node[root].is_border:
 			self.num_border = self.num_border + 1;
-	
+
 	#sample 20 dots on line segment between start and end.
 	def get_dots(self, start ,end):
 		x = [];
@@ -374,33 +379,31 @@ class topo_graph:
 		return x, y;
 	
 	#added path to avoid looping.
-	def recursive_draw_map(self, path, basemap, parent_lonlat, root):
-		path.append(root);
+	def recursive_draw_map(self, basemap, parent_lonlat, root):
+		self.visited[root] = True;
 		
 		child_lonlat = parent_lonlat;
 		if len( self.node[root].child ) != 0:
 			c0 = self.node[root].child[0];
 			child_lonlat = (self.node[c0].lon, self.node[c0].lat);
+			if (child_lonlat[0] == None or child_lonlat[1] == None):
+				child_lonlat = (0, 0);
+
 
 		root_lonlat = (self.node[root].lon, self.node[root].lat);
+		if (root_lonlat[0] == None or root_lonlat[1] == None):
+			root_lonlat = (0, 0);
 		if root_lonlat == (0, 0):
 			lon = (parent_lonlat[0]+child_lonlat[0])/2.0;
 			lat = (parent_lonlat[1]+child_lonlat[1])/2.0;
 			root_lonlat = (lon, lat);
-
 		basemap.plot(root_lonlat[0], root_lonlat[1], latlon=True, marker = 'o', markerfacecolor='red', markersize=1.5);
 		x,y = self.get_dots(parent_lonlat, root_lonlat);
 		basemap.plot(x, y, latlon=True, linewidth=0.3, color='r');
 
 		for c in self.node[root].child:
-			is_loop = False;
-			for p in path:
-				if p == c:
-					is_loop = True;
-					break;
-			
-			if not is_loop:
-				self.recursive_draw_map(path, basemap, root_lonlat, c);
+			if not self.visited[c]:
+				self.recursive_draw_map(basemap, root_lonlat, c);
 
 	
 	def draw_map(self, graph_name):
@@ -420,10 +423,35 @@ class topo_graph:
 		m.drawparallels(np.arange(-90,90,30), labels=[1,1,0,0], linewidth=0.8, color='g');
 		m.drawmeridians(np.arange(-180,180,30), labels=[0,0,1,1], linewidth=0.8, color='g');
 
+		self.clear_visited();
 		#draw nodes and paths.
-		self.recursive_draw_map([], m, (self.node[0].lon, self.node[0].lat), 0);
+		self.recursive_draw_map(m, (self.node[0].lon, self.node[0].lat), 0);
 
 		plt.savefig(graph_name+"_map.png",dpi=300);
+	
+	def export(self, graph_name):
+		f_topo = open(graph_name+"_topo", 'w');
+		f_node = open(graph_name+"_node", 'w');
+		
+		for i in range(len(self.node)):
+			f_topo.write(str(i));
+			node = self.node[i];
+			for c in node.child:
+				f_topo.write(","+str(c));
+			f_topo.write('\n');
+			
+			lon = node.lon;
+			lat = node.lat;
+			if(lon == None or lat == None):
+				lon = 0;
+				lat = 0;
+
+			f_node.write("%d,%s,%d,%s,%.2f,%.2f\n"%(i,node.addr,node.is_border,node.country_code,lon,lat));
+
+		f_topo.close();
+		f_node.close();
+			
+				
 		
 def get_src(file_name):
 	f = open(file_name,'r');
@@ -472,20 +500,27 @@ def main(argv):
 	#mark border.
 	print "marking border..., ";
 	start_time = time.time();
-	topo.recursive_mark([], topo.node[0].country_code, 0);
+	topo.clear_visited();
+	topo.recursive_mark(topo.node[0].country_code, 0);
 	end_time = time.time();
 	print "\tborder ip num:", topo.num_border;
 	print "\t",(end_time - start_time)*1000,"ms";
 
 	print "drawing topo..., ";
 	start_time = time.time();
-	#topo.draw_topo_graphviz(argv[2]);
+	topo.draw_topo_graphviz(argv[2]);
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
 	
 	print "drawing map..., ";
 	start_time = time.time();
-	topo.draw_map(argv[2]);
+	#topo.draw_map(argv[2]);
+	end_time = time.time();
+	print "\t",(end_time - start_time)*1000,"ms";
+	
+	print "exporting...";
+	start_time = time.time();
+	topo.export(argv[2]);
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
 	
