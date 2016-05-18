@@ -73,6 +73,10 @@ class topo_graph:
 		#largest connected component.
 		self.graph0 = nx.Graph();
 		
+		self.map_loc = {};
+		self.map_path = [];
+		self.map_node = {};
+		
 		self.visited = [];
 	
 	def clear_visited(self):
@@ -122,7 +126,7 @@ class topo_graph:
 				self.dict[addr] = self.num_nodes;
 				if self.prev_index != -1:
 					self.node[self.prev_index].child.append(self.num_nodes);
-					self.node[self.prev_index].child_rtt.append(rtt);
+					self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
 					self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
 
 					self.num_edges = self.num_edges + 1;
@@ -134,7 +138,7 @@ class topo_graph:
 				child_index = self.dict[addr];
 				if self.prev_index != -1 and not self.is_child(self.prev_index, child_index):
 					self.node[self.prev_index].child.append(child_index);
-					self.node[self.prev_index].child_rtt.append(rtt);
+					self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
 					self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
 
 					self.num_edges = self.num_edges + 1;
@@ -189,7 +193,7 @@ class topo_graph:
 		for i in range(len(self.node)-1,-1,-1):
 			self.graph.add_node(i);
 			for j in range(len(self.node[i].child)):
-				self.graph.add_edge(i,self.node[i].child[j],weight=self.node[i].child_rtt[j]);
+				self.graph.add_edge(i,self.node[i].child[j],weight=self.node[i].child_rtt[j][2]);
 						
 		#get the largest connected component.
 		self.graph0 = sorted(nx.connected_component_subgraphs(self.graph), key = len, reverse=True)[0];
@@ -379,7 +383,7 @@ class topo_graph:
 		return x, y;
 	
 	#added path to avoid looping.
-	def recursive_draw_map(self, basemap, parent_lonlat, root):
+	def recursive_generate_map(self, parent_lonlat, root):
 		self.visited[root] = True;
 		
 		child_lonlat = parent_lonlat;
@@ -397,15 +401,31 @@ class topo_graph:
 			lon = (parent_lonlat[0]+child_lonlat[0])/2.0;
 			lat = (parent_lonlat[1]+child_lonlat[1])/2.0;
 			root_lonlat = (lon, lat);
-		basemap.plot(root_lonlat[0], root_lonlat[1], latlon=True, marker = 'o', markerfacecolor='red', markersize=1.5);
-		x,y = self.get_dots(parent_lonlat, root_lonlat);
-		basemap.plot(x, y, latlon=True, linewidth=0.3, color='r');
 
+		is_redundant = False;
+		if (self.map_loc.has_key(str(parent_lonlat))):
+			if (self.map_loc[str(parent_lonlat)].has_key(str(root_lonlat))):
+				is_redundant = True;
+			else:
+				self.map_loc[str(parent_lonlat)][str(root_lonlat)] = 1;
+		else:
+			self.map_loc[str(parent_lonlat)] = { str(root_lonlat):1 };
+		
+		if (not is_redundant):
+			self.map_path.append( (parent_lonlat, root_lonlat) );
+		
 		for c in self.node[root].child:
 			if not self.visited[c]:
-				self.recursive_draw_map(basemap, root_lonlat, c);
+				self.recursive_generate_map(root_lonlat, c);
 
 	
+		
+	def generate_map(self, graph_name):
+		self.clear_visited();
+		#draw nodes and paths.
+		self.recursive_generate_map((self.node[0].lon, self.node[0].lat), 0);
+		
+		
 	def draw_map(self, graph_name):
 		plt.figure(figsize=(50,50));
 
@@ -422,18 +442,32 @@ class topo_graph:
 		m.drawcountries();
 		m.drawparallels(np.arange(-90,90,30), labels=[1,1,0,0], linewidth=0.8, color='g');
 		m.drawmeridians(np.arange(-180,180,30), labels=[0,0,1,1], linewidth=0.8, color='g');
+		
+		for i in range(len(self.map_path)):
+			path = self.map_path[i];
+			parent_lonlat = path[0];
+			root_lonlat = path[1];
+			
+			if ( not self.map_node.has_key( str(parent_lonlat) ) ):
+				self.map_node[str(parent_lonlat)] = parent_lonlat;
+			if ( not self.map_node.has_key( str(root_lonlat) ) ):
+				self.map_node[str(root_lonlat)] = root_lonlat;
+			
+			x,y = self.get_dots(parent_lonlat, root_lonlat);
+			m.plot(x, y, latlon=True, linewidth=0.3, color='r');
 
-		self.clear_visited();
-		#draw nodes and paths.
-		self.recursive_draw_map(m, (self.node[0].lon, self.node[0].lat), 0);
-
+		for key in self.map_node:
+			lonlat = self.map_node[key];
+			m.plot(lonlat[0], lonlat[1], latlon=True, marker = 'o', markerfacecolor='red', markersize=1.5);
+		
 		plt.savefig(graph_name+"_map.png",dpi=300);
+
 	
 	def export(self, graph_name):
 		f_topo = open(graph_name+"_topo", 'w');
 		f_node = open(graph_name+"_node", 'w');
 		
-		for i in range(len(self.node)):
+		for i in self.graph0.nodes():
 			f_topo.write(str(i));
 			node = self.node[i];
 			for c in node.child:
@@ -451,6 +485,12 @@ class topo_graph:
 		f_topo.close();
 		f_node.close();
 			
+	def export_map(self, graph_name):
+		f_map = open(graph_name+"_map", 'w');
+		for i in range(len(self.map_path)):
+			f_map.write(str(self.map_path[i])+'\n');
+		
+		f_map.close();
 				
 		
 def get_src(file_name):
@@ -512,15 +552,23 @@ def main(argv):
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
 	
-	print "drawing map..., ";
+	print "generating map..., ";
 	start_time = time.time();
-	#topo.draw_map(argv[2]);
+	topo.generate_map(argv[2]);
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
+	
+	print "drawing map..., ";
+	start_time = time.time();
+	topo.draw_map(argv[2]);
+	end_time = time.time();
+	print "\t",(end_time - start_time)*1000,"ms";
+
 	
 	print "exporting...";
 	start_time = time.time();
 	topo.export(argv[2]);
+	topo.export_map(argv[2]);
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
 	
