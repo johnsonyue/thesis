@@ -19,6 +19,8 @@ import geoip2.database
 
 from mpl_toolkits.basemap import Basemap
 
+import json
+
 #class node represents a node in topo graph.
 class node:
 	def __init__(self,ip):
@@ -73,9 +75,10 @@ class topo_graph:
 		#largest connected component.
 		self.graph0 = nx.Graph();
 		
-		self.map_loc = {};
-		self.map_path = [];
-		self.map_node = {};
+		self.map_nodes = [];
+		self.map_nodes_dict = {};
+		self.map_paths = [];
+		self.map_paths_dict = {};
 		
 		self.visited = [];
 	
@@ -401,18 +404,26 @@ class topo_graph:
 			lon = (parent_lonlat[0]+child_lonlat[0])/2.0;
 			lat = (parent_lonlat[1]+child_lonlat[1])/2.0;
 			root_lonlat = (lon, lat);
+		
+		if (not self.map_nodes_dict.has_key(str(root_lonlat))):
+			self.map_nodes_dict[str(root_lonlat)] = len(self.map_nodes);
+			self.map_nodes.append( { "lon":root_lonlat[0], "lat":root_lonlat[1] } );
 
 		is_redundant = False;
-		if (self.map_loc.has_key(str(parent_lonlat))):
-			if (self.map_loc[str(parent_lonlat)].has_key(str(root_lonlat))):
+		if (self.map_paths_dict.has_key(str(parent_lonlat))):
+			if (self.map_paths_dict[str(parent_lonlat)].has_key(str(root_lonlat))):
 				is_redundant = True;
 			else:
-				self.map_loc[str(parent_lonlat)][str(root_lonlat)] = 1;
+				self.map_paths_dict[str(parent_lonlat)][str(root_lonlat)] = 1;
 		else:
-			self.map_loc[str(parent_lonlat)] = { str(root_lonlat):1 };
+			self.map_paths_dict[str(parent_lonlat)] = { str(root_lonlat):1 };
 		
 		if (not is_redundant):
-			self.map_path.append( (parent_lonlat, root_lonlat) );
+			parent_index = self.map_nodes_dict[str(parent_lonlat)];
+			root_index = self.map_nodes_dict[str(root_lonlat)];
+			if parent_index != root_index:
+				path = { "source":parent_index, "target":root_index };
+				self.map_paths.append( path );
 		
 		for c in self.node[root].child:
 			if not self.visited[c]:
@@ -443,29 +454,24 @@ class topo_graph:
 		m.drawparallels(np.arange(-90,90,30), labels=[1,1,0,0], linewidth=0.8, color='g');
 		m.drawmeridians(np.arange(-180,180,30), labels=[0,0,1,1], linewidth=0.8, color='g');
 		
-		for i in range(len(self.map_path)):
-			path = self.map_path[i];
-			parent_lonlat = path[0];
-			root_lonlat = path[1];
-			
-			if ( not self.map_node.has_key( str(parent_lonlat) ) ):
-				self.map_node[str(parent_lonlat)] = parent_lonlat;
-			if ( not self.map_node.has_key( str(root_lonlat) ) ):
-				self.map_node[str(root_lonlat)] = root_lonlat;
+		for i in range(len(self.map_paths)):
+			src = self.map_paths[i]["source"];
+			tgt = self.map_paths[i]["target"];
+			parent_lonlat = (self.map_nodes[src]["lon"], self.map_nodes[src]["lat"]);
+			root_lonlat = (self.map_nodes[tgt]["lon"], self.map_nodes[tgt]["lat"]);
 			
 			x,y = self.get_dots(parent_lonlat, root_lonlat);
 			m.plot(x, y, latlon=True, linewidth=0.3, color='r');
 
-		for key in self.map_node:
-			lonlat = self.map_node[key];
-			m.plot(lonlat[0], lonlat[1], latlon=True, marker = 'o', markerfacecolor='red', markersize=1.5);
+		for i in range(len(self.map_nodes)):
+			m.plot(self.map_nodes[i]["lon"], self.map_nodes[i]["lat"], latlon=True, marker = 'o', markerfacecolor='red', markersize=1.5);
 		
 		plt.savefig(graph_name+"_map.png",dpi=300);
 
 	
-	def export(self, graph_name):
+	def export_topo(self, graph_name):
 		f_topo = open(graph_name+"_topo", 'w');
-		f_node = open(graph_name+"_node", 'w');
+		f_node = open(graph_name+"_topo_node", 'w');
 		
 		for i in self.graph0.nodes():
 			f_topo.write(str(i));
@@ -486,11 +492,19 @@ class topo_graph:
 		f_node.close();
 			
 	def export_map(self, graph_name):
-		f_map = open(graph_name+"_map", 'w');
-		for i in range(len(self.map_path)):
-			f_map.write(str(self.map_path[i])+'\n');
+		f_map = open(graph_name+"_map.json", 'w');
+		f_node = open(graph_name+"_map_node.json", 'w');
+		f_data = open(graph_name+"_map_data.json", 'w');
+				
+		f_map.write(json.dumps(self.map_paths));
+		f_node.write(json.dumps(self.map_nodes));
+		data = {};
+		data["nodes"] = self.map_nodes;
+		data["edges"] = self.map_paths;
+		f_data.write(json.dumps(data));
 		
 		f_map.close();
+		f_node.close();
 				
 		
 def get_src(file_name):
@@ -567,7 +581,7 @@ def main(argv):
 	
 	print "exporting...";
 	start_time = time.time();
-	topo.export(argv[2]);
+	topo.export_topo(argv[2]);
 	topo.export_map(argv[2]);
 	end_time = time.time();
 	print "\t",(end_time - start_time)*1000,"ms";
