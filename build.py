@@ -505,7 +505,46 @@ class topo_graph:
 		
 		f_map.close();
 		f_node.close();
-				
+	
+	def merge(self, topo):
+		list = topo.node;
+		graph = topo.graph0.nodes();
+		topo.clear_visited();
+		for i in graph:
+			if not topo.visited[i]:
+				add_node(topo, i, topo.node[i]);
+	
+	def add_node(self, topo, ind, n):
+		index = -1;
+		list = topo.node;
+		
+		topo.visited[i] = True;
+		
+		#recursively get child.
+		child = [];
+		for c in n.child:
+			if not topo.visited[c]:
+				ret = self.add_node(list[c]);
+				child.append(ret);
+
+		#set index to return.
+		#append or update node.
+		if not self.dict.has_key(n.addr):
+			self.node.append();
+			index = len(self.node);
+			n.child = child;
+		else:
+			index = self.dict[n.addr];
+			for c in child:
+				is_included = False;
+				for ch in self.node[index].child:
+					if c == ch:
+						is_included = True;
+						break;
+				if not is_included:
+					self.node[index].child.append(c);
+	
+		return index;
 		
 def get_src(file_name):
 	f = open(file_name,'r');
