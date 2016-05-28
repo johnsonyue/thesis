@@ -434,7 +434,7 @@ class topo_graph:
 
 	
 		
-	def generate_map(self, graph_name):
+	def generate_map(self):
 		self.clear_visited();
 		#draw nodes and paths.
 		self.recursive_generate_map((self.node[0].lon, self.node[0].lat), 0);
@@ -509,7 +509,7 @@ class topo_graph:
 		f_node.close();
 			
 	def export_map(self, graph_name):
-		f_map = open(graph_name+"_map.json", 'w');
+		f_map = open(graph_name+".map", 'w');
 		f_node = open(graph_name+"_map_node.json", 'w');
 		f_data = open(graph_name+"_map_data.json", 'w');
 				

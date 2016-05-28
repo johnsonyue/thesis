@@ -1,6 +1,7 @@
 import HTMLParser
 import urllib2
 import re
+import os
 
 #html parsers.
 class CaidaParser(HTMLParser.HTMLParser):
@@ -39,10 +40,10 @@ def get_caida_tree(url, dir, username, password, file):
 	opener = urllib2.build_opener(urllib2.HTTPBasicAuthHandler(passwd_mgr));
 	team_dir = ["team-1/daily/", "team-2/daily/", "team-3/daily/"]; 
 
-	parser = CaidaParser();
 	for t in team_dir:
 		f = opener.open(url+t);
 		text = f.read();
+		parser = CaidaParser();
 		parser.feed(text);
 		
 		team = t.split('/')[0];
@@ -69,6 +70,8 @@ def get_time_dir(url, dir, opener, file):
 	parser.feed(text);
 
 	for e in parser.file:
+		if ( len(e.split('.')) != 8 ):
+			continue;
 		time = e.split('.')[4];
 		node = e.split('.')[5];
 		node_dir = dir+time+"/"+node+"/";
@@ -76,7 +79,7 @@ def get_time_dir(url, dir, opener, file):
 		print node_dir;
 
 def get_url(list_file_name, time, node):
-	str = time+"//"+node;
+	str = time+"/"+node;
 	target = "";
 	
 	is_included = False;
@@ -90,20 +93,5 @@ def get_url(list_file_name, time, node):
 		return None;
 
 	url = target.split(':', 1)[1];
+	url = url.strip('\n');
 	return url;
-
-def main():
-	url = "https://topo-data.caida.org/team-probing/list-7.allpref24/";
-	username = "15b903031@hit.edu.cn";
-	password = "yuzhuoxun123";
-	dir = "caida/ip/";
-	
-	file = open("caida", 'wb');
-	get_caida_tree(url, dir, username, password, file);
-	file.close();
-	
-	print get_url("caida", "20070913", "syd-au"); 
-	print get_url("caida", "20010913", "syd-au"); 
-
-
-main();
