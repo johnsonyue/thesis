@@ -1,0 +1,109 @@
+import HTMLParser
+import urllib2
+import re
+
+#html parsers.
+class CaidaParser(HTMLParser.HTMLParser):
+	def __init__(self):
+		HTMLParser.HTMLParser.__init__(self);
+		self.img_cnt=0;
+		self.alt="";
+		self.file=[];
+		self.dir=[];
+
+	def get_attr_value(self, target, attrs):
+		for e in attrs:
+			key = e[0];
+			value = e[1];
+			if (key == target):
+				return value;
+
+	def handle_starttag(self, tag, attrs):
+		if (tag == "img"):
+			if (self.img_cnt >=2):
+				alt_value = self.get_attr_value("alt", attrs);
+				self.alt=alt_value;
+			self.img_cnt = self.img_cnt + 1;
+		
+		if (tag == "a" and self.alt == "[DIR]"):
+			href_value = self.get_attr_value("href", attrs);
+			self.dir.append(href_value);
+		elif (tag == "a" and self.alt != ""):
+			href_value = self.get_attr_value("href", attrs);
+			self.file.append(href_value);
+
+def get_caida_tree(url, dir, username, password, file):
+	passwd_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm();
+	passwd_mgr.add_password("topo-data", url, username, password);
+
+	opener = urllib2.build_opener(urllib2.HTTPBasicAuthHandler(passwd_mgr));
+	team_dir = ["team-1/daily/", "team-2/daily/", "team-3/daily/"]; 
+
+	parser = CaidaParser();
+	for t in team_dir:
+		f = opener.open(url+t);
+		text = f.read();
+		parser.feed(text);
+		
+		team = t.split('/')[0];
+	
+		for e in parser.dir:
+			get_year_dir(url+t+e, dir+team+"/", opener, file);
+
+def get_year_dir(url, dir, opener, file):
+	f = opener.open(url);
+	text = f.read();
+	
+	parser = CaidaParser();
+	parser.feed(text);
+
+	for e in parser.dir:
+		time = e.split('-')[1];
+		get_time_dir(url+e, dir, opener, file);
+
+def get_time_dir(url, dir, opener, file):
+	f = opener.open(url);
+	text = f.read();
+	
+	parser = CaidaParser();
+	parser.feed(text);
+
+	for e in parser.file:
+		time = e.split('.')[4];
+		node = e.split('.')[5];
+		node_dir = dir+time+"/"+node+"/";
+		file.write(node_dir+":"+url+e+'\n');
+		print node_dir;
+
+def get_url(list_file_name, time, node):
+	str = time+"//"+node;
+	target = "";
+	
+	is_included = False;
+	for line in open(list_file_name, 'r'):
+		if (len(re.findall(str,line)) != 0):
+			is_included = True;
+			target = line;
+			break;
+	
+	if (not is_included):
+		return None;
+
+	url = target.split(':', 1)[1];
+	return url;
+
+def main():
+	url = "https://topo-data.caida.org/team-probing/list-7.allpref24/";
+	username = "15b903031@hit.edu.cn";
+	password = "yuzhuoxun123";
+	dir = "caida/ip/";
+	
+	file = open("caida", 'wb');
+	get_caida_tree(url, dir, username, password, file);
+	file.close();
+	
+	print get_url("caida", "20070913", "syd-au"); 
+	print get_url("caida", "20010913", "syd-au"); 
+
+
+main();

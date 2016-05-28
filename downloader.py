@@ -7,6 +7,7 @@ import time
 import sys
 from multiprocessing import Pool
 
+#html parsers.
 class CaidaParser(HTMLParser.HTMLParser):
 	def __init__(self):
 		HTMLParser.HTMLParser.__init__(self);
@@ -65,7 +66,7 @@ class iPlaneParser(HTMLParser.HTMLParser):
 			href_value = self.get_attr_value("href", attrs);
 			self.file.append(href_value);
 
-
+#caida.
 def download_caida(dir, file, url, root):
 	os.chdir(root+dir);
 	if not os.path.exists(root+dir+file):
@@ -87,8 +88,8 @@ def recursive_download_dir_caida(seed, depth, dir, root):
 		for i in range(depth):
 			print "--",
 		print e;
-		#p.apply_async(download_iplane, args=(dir, e, seed+dir+e, root, ));
-		download_iplane(dir, e, seed+dir+e, root);
+		#p.apply_async(download_caida, args=(dir, e, seed+dir+e, root, ));
+		download_caida(dir, e, seed+dir+e, root);
 		
 	p.close();
 	p.join();
@@ -100,7 +101,77 @@ def recursive_download_dir_caida(seed, depth, dir, root):
 		if not os.path.exists(root+e):
 			os.mkdir(root+dir+e);
 
-		recursive_download_dir(seed, depth+1, dir+e, root);
+		recursive_download_dir_caida(seed, depth+1, dir+e, root);
+
+#caida restricted.
+def download_caida_restricted_worker(dir, file, url, root, opener):
+	os.chdir(root+dir);
+	CHUNK = 16*1024;
+	if not os.path.exists(root+dir+file):
+		f = opener.open(url);
+		fp = open(file, 'wb');
+		while True:
+			chunk = f.read(CHUNK);
+			if not chunk:
+				break;
+			fp.write(chunk);
+	
+	fp.close();
+
+def download_caida_restricted(seed, depth, dir, root):
+	username = "15b903031@hit.edu.cn";
+	password = "yuzhuoxun123";
+	
+	passwd_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm();
+	passwd_mgr.add_password("topo-data", seed, username, password);
+
+	opener = urllib2.build_opener(urllib2.HTTPBasicAuthHandler(passwd_mgr));
+	recursive_download_dir_caida_restricted(seed, depth, dir, root, opener);
+
+def recursive_download_dir_caida_restricted(seed, depth, dir, root, opener):
+	if not os.path.exists(root):
+		os.mkdir(root);
+	f = opener.open(seed+dir);
+	text = f.read();
+
+	parser = CaidaParser();
+	parser.feed(text);
+	
+	p = Pool(5);
+	
+	for e in parser.file:
+		for i in range(depth):
+			print "--",
+		print e;
+		#p.apply_async(download_caida_restricted_worker, args=(dir, e, seed+dir+e, root, opener, ));
+		download_caida_restricted_worker(dir, e, seed+dir+e, root, opener);
+		
+	p.close();
+	p.join();
+	
+	for e in parser.dir:
+		for i in range(depth):
+			print "--",
+		print e;
+		if not os.path.exists(root+e):
+			os.mkdir(root+dir+e);
+
+		recursive_download_dir_caida_restricted(seed, depth+1, dir+e, root);
+
+#iplane.
+def download_iplane_worker(dir, file, url, root, opener):
+	os.chdir(root+dir);
+	CHUNK = 16*1024;
+	if not os.path.exists(root+dir+file):
+		f = opener.open(url);
+		fp = open(file, 'wb');
+		while True:
+			chunk = f.read(CHUNK);
+			if not chunk:
+				break;
+			fp.write(chunk);
+	
+	fp.close();
 
 def download_iplane(seed, depth, dir, root):
 	print "loggin in...";
@@ -120,20 +191,6 @@ def download_iplane(seed, depth, dir, root):
 
 	recursive_download_dir_iplane(seed, depth, dir, root, opener);
 
-def download(dir, file, url, root, opener):
-	os.chdir(root+dir);
-	CHUNK = 16*1024;
-	if not os.path.exists(root+dir+file):
-		f = opener.open(url);
-		fp = open(file, 'wb');
-		while True:
-			chunk = f.read(CHUNK);
-			if not chunk:
-				break;
-			fp.write(chunk);
-	
-	fp.close();
-
 def recursive_download_dir_iplane(seed, depth, dir, root, opener):
 	if not os.path.exists(root):
 		os.mkdir(root);
@@ -151,8 +208,8 @@ def recursive_download_dir_iplane(seed, depth, dir, root, opener):
 		for i in range(depth):
 			print "--",
 		print e;
-		#p.apply_async(download, args=(dir, e, seed+dir+e, root, opener, ));
-		#download(dir, e, seed+dir+e, root, opener);
+		#p.apply_async(download_iplane_worker, args=(dir, e, seed+dir+e, root, opener, ));
+		download_iplane_worker(dir, e, seed+dir+e, root, opener);
 	
 	p.close();
 	p.join();
@@ -170,8 +227,11 @@ def main(argv):
 	#seed = "http://data.caida.org/datasets/topology/ark/ipv4/probe-data/team-2/2014/cycle-20140403/";
 	#recursive_download_dir_caida(seed, 0, "", "/home/john/data/caida");
 		
-	seed = "http://data-store.ripe.net/datasets/iplane-traceroutes/";
-	download_iplane(seed, 0, "", "/home/john/data/iplane/");
+	#seed = "http://data-store.ripe.net/datasets/iplane-traceroutes/";
+	#download_iplane(seed, 0, "", "/home/john/data/iplane/");
+
+	seed = "https://topo-data.caida.org/ITDK/ITDK-2016-03/";
+	download_caida_restricted(seed, 0, "", "/home/john/data/caida_restricted/");
 
 if __name__ == "__main__":
 	main(sys.argv);
