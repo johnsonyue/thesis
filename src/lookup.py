@@ -18,7 +18,7 @@ class lookup:
 		];
 		self.bgp_url="http://data.caida.org/datasets/routing/routeviews-prefix2as/2016/06/routeviews-rv2-20160601-1200.pfx2as.gz";
 
-		self.ip_bst = {};
+		self.ip_bst = {'0':{}};
 		
 		self.get_pfx2asn();
 		self.get_asn2cc();
@@ -174,4 +174,9 @@ class lookup:
 			return result[len(result)-1];
 	
 	def get_cc_from_asn(self, asn):
+		asn = asn.split('_')[0];
+		asn = asn.split(',')[0];
+		if not self.asn2cc.has_key(asn):
+			return "*";
+		
 		return self.asn2cc[asn];

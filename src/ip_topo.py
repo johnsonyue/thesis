@@ -16,6 +16,7 @@ import networkx as nx
 from networkx import graphviz_layout
 
 import geoip2.database
+import lookup
 
 from mpl_toolkits.basemap import Basemap
 
@@ -26,7 +27,10 @@ class node:
 	def __init__(self,ip):
 		self.addr = ip;
 		self.country_code = "";
+		self.asn = "";
+		self.asn_cc = "";
 		self.is_border = False;
+		self.is_ascc_border = False;
 		self.loc_desc = "";
 		self.lon = 0;
 		self.lat = 0;
@@ -162,6 +166,7 @@ class topo_graph:
 		
 		#query country.
 		reader = geoip2.database.Reader('GeoLite2-City.mmdb');
+		lkp = lookup.lookup();
 		for i in range( len(self.node) ):
 			is_found = True;
 			iso_code = "";
@@ -196,6 +201,14 @@ class topo_graph:
 			self.node[i].loc_desc = loc_desc_list[0]+","+loc_desc_list[1]+","+loc_desc_list[2];
 			self.node[i].lon = lon;
 			self.node[i].lat = lat;
+			
+			#asn.
+			asn = lkp.get_asn_from_pfx(self.node[i].addr);
+			if (asn == None):
+				asn = "*";
+				asn_cc = "*";
+			if (asn != "*"):
+				asn_cc = lkp.get_cc_from_asn(asn);
 
 		reader.close();
 
@@ -209,6 +222,10 @@ class topo_graph:
 		
 		for i in range(self.num_nodes):
 			self.visited.append(False);
+		
+		#mark borders.
+		self.mark_borders();
+		print "borders marked";
 		
 	def disp_stats(self):
 		print "total traces processed:",self.num_traces;
@@ -356,24 +373,38 @@ class topo_graph:
 		plt.savefig(graph_name+"_topo.png",dpi=300);
 		print "done";
 	
-	def recursive_mark(self, parent_code, root):
+	#if node doesn't have the cc, assume it to be within the same cc of it's parent.
+	def recursive_mark(self, parent_code, parent_ascc, root):
 		self.visited[root] = True;
+
 		root_code = self.node[root].country_code;
+		root_ascc = self.node[root].asn_cc;
 		if root_code == None or root_code == "*":
 			root_code = parent_code;
+		if root_ascc == "*":
+			root_ascc = parent_ascc;
+
 		if root_code != parent_code:
 			self.node[root].is_border = True;
+		if root_ascc != parent_ascc:
+			self.node[root].is_ascc_border = True;
 		
 		for c in self.node[root].child:
 			child_code = self.node[c].country_code;
+			child_ascc = self.node[c].asn_cc;
 			if child_code != None and child_code != "*" and root_code != child_code:
 				self.node[root].is_border = True;
-
+			if child_ascc != "*" and root_ascc != child_ascc:
+				self.node[root].is_ascc_border = True;
+			
 			if not self.visited[c]:
-				self.recursive_mark(root_code, c);
+				self.recursive_mark(root_code, root_ascc, c);
 
 		if self.node[root].is_border:
 			self.num_border = self.num_border + 1;
+	
+	def mark_borders(self):
+		self.recursive_mark(self.node[0].country_code, self.node[0].asn_cc, 0);
 
 	#sample 20 dots on line segment between start and end.
 	def get_dots(self, start ,end):
