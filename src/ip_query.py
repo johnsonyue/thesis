@@ -11,7 +11,6 @@ def usage():
 	print "            type:'ip' or 'router'";
 	print "            time:'YYYYMMDD'";
 	print "            target:'topo' or 'deg' or 'path' or 'ttl' or 'map'";
-	print "the output file is data/type/time/source/node/<target>";
 
 def read_auth(account):
 	ret = [];
@@ -41,11 +40,15 @@ def main(argv):
 	if (source == "caida" and type == "ip"):
 		dir = "data/caida/ip/"+time+"/"+node+"/";
 		file = source+"."+type+"."+time+"."+node+"."+target;
+		raw_file = source+"."+type+"."+time+"."+node;
 		if not os.path.exists(dir):
 			os.makedirs(dir);
 		
-		if not os.path.exists(dir+file):
-			print "file does not exist, start downloading...";
+		if os.path.exists(dir+file):
+			print "already exists";
+			exit();
+		elif not os.path.exists(dir+raw_file):	
+			print "raw file does not exist, start downloading...";
 			auth = read_auth("caida");
 			if ( len(auth) != 2 ):
 				print "auth failed";
@@ -53,10 +56,9 @@ def main(argv):
 
 			url = caida.get_url("caida", time, node);
 			if ( url == None):
-				print "not found";
+				print "no such record found";
 				exit();
 	
-			raw_file = source+"."+type+"."+time+"."+node;
 			download_worker.download_caida_restricted_worker(url, dir, raw_file+".warts.gz", auth[0], auth[1]);
 			print "finished downloading.";
 			print "dumping...";
@@ -72,7 +74,12 @@ def main(argv):
 		topo.generate_map();
 		print "exporting map...";
 		topo.export_map(dir+raw_file);
-
+		print "exporting simplified topo...";
+		topo.export_topo_simplified(dir+raw_file);
+		print "exporting graphviz...";
+		topo.export_graphviz(dir+raw_file);
+		print "exporting degree...";
+		topo.export_degree(dir+raw_file);
 
 if __name__ == "__main__":
 	main(sys.argv);

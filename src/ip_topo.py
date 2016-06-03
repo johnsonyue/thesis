@@ -83,6 +83,9 @@ class topo_graph:
 		self.map_paths = [];
 		self.map_paths_dict = {};
 		
+		#data structure for simplified topo.
+		self.data = {"nodes":{}, "edges":[]};
+		
 		self.visited = [];
 	
 	def clear_visited(self):
@@ -507,7 +510,49 @@ class topo_graph:
 
 		f_topo.close();
 		f_node.close();
-			
+	
+	def export_topo_simplified(self, graph_name):
+		f_data = open(graph_name+"_topo_simple", 'w');
+		
+		self.clear_visited();
+		
+		self.export_subtopo(0, 0);
+		result = {"nodes":[], "edges":[]};
+		map = {};
+		
+		i = 0;
+		nodes = self.data["nodes"];
+		for k in nodes:
+			map[k] = i;
+			i = i+1;
+		
+		for k in nodes:
+			result["nodes"].append(nodes[k]);
+		
+		edges = self.data["edges"];
+		for e in edges:
+			t = {"source" : map[e["source"]], "target" : map[e["target"]]};
+			result["edges"].append(t); 
+		
+		f_data.write(json.dumps(result));
+		f_data.close();
+	
+	def export_subtopo(self, ind, hop):
+		node = self.node[ind];
+
+		n = {"addr":node.addr, "is_border":node.is_border, "country":node.country_code, "lon":node.lon, "lat":node.lat};
+		self.data["nodes"][ind] = n;
+		
+		self.visited[ind] = True;
+		
+		if hop <= 4:
+			for c in node.child:
+				if not self.visited[c]:
+					link = {"source":ind, "target":c};
+					self.data["edges"].append(link);
+					self.export_subtopo(c, hop+1);
+		
+		
 	def export_map(self, graph_name):
 		f_map = open(graph_name+".map", 'w');
 		f_node = open(graph_name+"_map_node.json", 'w');
@@ -522,6 +567,43 @@ class topo_graph:
 		
 		f_map.close();
 		f_node.close();
+	
+	def export_graphviz(self, graph_name):
+		pos = nx.graphviz_layout(self.graph0,prog="twopi",root=0);
+		map = {};
+		result = {"nodes":[], "edges":[]};
+
+		i = 0;
+		for n in self.graph0.nodes():
+			node = self.node[n];
+			p = pos[n];
+			t = {"addr":node.addr, "is_border":node.is_border, "country":node.country_code, "lon":node.lon, "lat":node.lat, "pos":p};
+			result["nodes"].append(t);
+
+			map[n] = i;
+			i = i+1;
+		
+		for a,b in self.graph0.edges():
+			e = {"source": map[a], "target": map[b]};
+			result["edges"].append(e);
+
+		f_viz = open(graph_name+".graphviz", 'w');
+		f_viz.write(json.dumps(result));
+		f_viz.close();
+	
+	def export_degree(self, graph_name):
+		result = {"nodes":[]};
+
+		for n in self.graph0.nodes():
+			node = self.node[n];
+			degree = node.indegree+len(node.child);
+
+			t = {"addr":node.addr, "is_border":node.is_border, "country":node.country_code, "lon":node.lon, "lat":node.lat, "degree":degree};
+			result["nodes"].append(t);
+
+		f_deg = open(graph_name+".degree", 'w');
+		f_deg.write(json.dumps(result));
+		f_deg.close();
 	
 	def merge(self, topo):
 		list = topo.node;
