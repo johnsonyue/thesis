@@ -26,6 +26,7 @@ class lookup:
 
 	#asn => cc.
 	def get_asn2cc(self):
+		print ("building asn2cc ...");
 		if not os.path.exists(self.dir):
 			os.makedirs(self.dir);
 
@@ -55,8 +56,6 @@ class lookup:
 				list = line.split('|');
 				self.asn2cc[list[0]] = list[1].strip('\n');
 			f.close();
-
-		print ("get asn2cc finished.");
 	
 	def parse_asn_line(self, line):
 		if (line[0] == '#'):
@@ -122,6 +121,7 @@ class lookup:
 	
 	
 	def get_pfx2asn(self):
+		print "building pfx2asn ...";
 		if not os.path.exists(self.dir):
 			os.makedirs(self.dir);
 		
@@ -149,8 +149,6 @@ class lookup:
 			self.ip_bst = json.loads(f.read());
 			f.close();
 		
-		print "get pfx2asn finished";
-		
 	#retriever.
 	def get_asn_from_pfx(self, ip):
 		class_a = ip.split('.')[0];
@@ -174,6 +172,8 @@ class lookup:
 			return result[len(result)-1];
 	
 	def get_cc_from_asn(self, asn):
+		if not asn:
+			return "*";
 		asn = asn.split('_')[0];
 		asn = asn.split(',')[0];
 		if not self.asn2cc.has_key(asn):

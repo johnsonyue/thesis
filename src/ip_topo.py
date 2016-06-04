@@ -51,6 +51,10 @@ class topo_graph:
 		#stats for traces.
 		self.num_traces = 0;
 		self.path_len_dist = [0 for i in range(1,100)];
+
+		self.lkp = lookup.lookup();
+		self.ptr=[];
+		self.path_tree = [];
 		
 		#add root.
 		self.num_edges = 0;
@@ -105,6 +109,7 @@ class topo_graph:
 		#record path len to get the dist.
 		self.path_len_dist[len(hops)] = self.path_len_dist[len(hops)] + 1;
 		
+		self.ptr = self.path_tree;
 		for i in range(13,len(hops)):
 			self.parse_hop(hops[i]);
 		return True;
@@ -125,10 +130,34 @@ class topo_graph:
 			return;
 
 		list = hop.split(';');
+		cnt = -1;
 		for tuple in list:
 			addr = (tuple.split(','))[0];
 			rtt = (tuple.split(','))[1];
-
+			
+			#asn.
+			asn = self.lkp.get_asn_from_pfx(addr);
+			if (asn == None):
+				asn = "*";
+				asn_cc = "*";
+			if (asn != "*"):
+				asn_cc = self.lkp.get_cc_from_asn(asn);
+			
+			is_included = False;
+			for i in range(len(self.ptr)):
+				if self.ptr[i]["name"] == asn:
+					is_included = True;
+					cnt = i;
+					break;
+				cnt = i;
+			
+			if(not is_included):
+				root = {"name":asn, "asn_cc":asn_cc, "num":1, "children":[]};
+				self.ptr.append(root);
+			else:
+				self.ptr[cnt]["num"] = self.ptr[cnt]["num"] + 1;
+			
+					
 			#build graph from a trace.
 			#self.prev_index represents the index of the predecessor.
 			#self.num_nodes-1 is the index of current node being appended.
@@ -137,6 +166,8 @@ class topo_graph:
 			if not self.dict.has_key(addr):
 				self.node.append(node(addr));
 				self.dict[addr] = self.num_nodes;
+				self.node[self.num_nodes].asn = asn;
+				self.node[self.num_nodes].asn_cc = asn_cc;
 				if self.prev_index != -1:
 					self.node[self.prev_index].child.append(self.num_nodes);
 					self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
@@ -156,7 +187,11 @@ class topo_graph:
 
 					self.num_edges = self.num_edges + 1;
 				self.prev_index = child_index;
+		
+		self.ptr = self.ptr[cnt]["children"];
+
 	def build(self, file):
+		print "parsing traces...";
 		f = open(file, 'r');
 		for line in f.readlines():
 			self.prev_index = 0;
@@ -164,9 +199,9 @@ class topo_graph:
 			self.num_traces = self.num_traces + 1;
 		f.close();
 		
+		print "querying cc...";
 		#query country.
 		reader = geoip2.database.Reader('GeoLite2-City.mmdb');
-		lkp = lookup.lookup();
 		for i in range( len(self.node) ):
 			is_found = True;
 			iso_code = "";
@@ -202,14 +237,7 @@ class topo_graph:
 			self.node[i].lon = lon;
 			self.node[i].lat = lat;
 			
-			#asn.
-			asn = lkp.get_asn_from_pfx(self.node[i].addr);
-			if (asn == None):
-				asn = "*";
-				asn_cc = "*";
-			if (asn != "*"):
-				asn_cc = lkp.get_cc_from_asn(asn);
-
+			
 		reader.close();
 
 		for i in range(len(self.node)-1,-1,-1):
@@ -224,6 +252,8 @@ class topo_graph:
 			self.visited.append(False);
 		
 		#mark borders.
+		print "marking borders...";
+		self.clear_visited();
 		self.mark_borders();
 		print "borders marked";
 		
@@ -635,6 +665,15 @@ class topo_graph:
 		f_deg = open(graph_name+".degree", 'w');
 		f_deg.write(json.dumps(result));
 		f_deg.close();
+	
+	def export_path_tree(self, graph_name):
+		asn = self.lkp.get_asn_from_pfx(self.node[0].addr);
+		ascc = self.lkp.get_cc_from_asn(asn);
+		result = {"name":asn, "as_cc":ascc, "num":self.num_traces, "children":self.path_tree};
+
+		f_pt = open(graph_name+".pt", 'w');
+		f_pt.write(json.dumps(result));
+		f_pt.close();
 	
 	def merge(self, topo):
 		list = topo.node;
