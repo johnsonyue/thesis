@@ -13,7 +13,7 @@ import matplotlib.cm as cm
 import numpy as np
 
 import networkx as nx
-from networkx import graphviz_layout
+from networkx.drawing.nx_agraph import graphviz_layout
 
 import geoip2.database
 import lookup
@@ -31,7 +31,6 @@ class node:
 		self.asn_cc = "";
 		self.is_border = False;
 		self.is_ascc_border = False;
-		self.loc_desc = "";
 		self.lon = 0;
 		self.lat = 0;
 
@@ -111,7 +110,30 @@ class topo_graph:
 		
 		self.ptr = self.path_tree;
 		for i in range(13,len(hops)):
-			self.parse_hop(hops[i]);
+			hop = hops[i].split(';')[0];
+			hop_list = [];
+			if hop != "q":
+				addr = hop.split(',')[0];
+				rtt = hop.split(',')[1];
+				hop_list = [addr, rtt];
+			self.parse_hop(hop_list);
+		return True;
+	
+	def parse_trace_iplane(self, trace_list):
+		#record path len to get the dist.
+		self.path_len_dist[len(trace_list)] = self.path_len_dist[len(trace_list)] + 1;
+
+		self.ptr = self.path_tree;
+		for i in range(len(trace_list)):
+			hop = trace_list[i];
+			hop_list = [];
+			addr = hop.split(' ')[1];
+			rtt = hop.split(' ')[2];
+			
+			if (addr != "0.0.0.0"):
+				hop_list = [addr, rtt];
+			self.parse_hop(hop_list);
+
 		return True;
 
 	#see if a node[cind] belongs to node[pind].
@@ -125,87 +147,118 @@ class topo_graph:
 
 	#each hop contains a tuple of ip,rtt,nTries.
 	def parse_hop(self, hop):
-		if hop == "q":
+		if hop == []:
 			self.prev_index = -1;
 			return;
 
-		list = hop.split(';');
+		addr = hop[0];
+		rtt = hop[1];
+		
 		cnt = -1;
-		for tuple in list:
-			addr = (tuple.split(','))[0];
-			rtt = (tuple.split(','))[1];
-			
-			#asn.
-			asn = self.lkp.get_asn_from_pfx(addr);
-			if (asn == None):
-				asn = "*";
-				asn_cc = "*";
-			if (asn != "*"):
-				asn_cc = self.lkp.get_cc_from_asn(asn);
-			
-			is_included = False;
-			for i in range(len(self.ptr)):
-				if self.ptr[i]["name"] == asn:
-					is_included = True;
-					cnt = i;
-					break;
+		#asn.
+		asn = self.lkp.get_asn_from_pfx(addr);
+		if (asn == None):
+			asn = "*";
+			asn_cc = "*";
+		if (asn != "*"):
+			asn_cc = self.lkp.get_cc_from_asn(asn);
+		
+		is_included = False;
+		for i in range(len(self.ptr)):
+			if self.ptr[i]["name"] == asn:
+				is_included = True;
 				cnt = i;
-			
-			if(not is_included):
-				root = {"name":asn, "asn_cc":asn_cc, "num":1, "children":[]};
-				self.ptr.append(root);
-			else:
-				self.ptr[cnt]["num"] = self.ptr[cnt]["num"] + 1;
-			
-					
-			#build graph from a trace.
-			#self.prev_index represents the index of the predecessor.
-			#self.num_nodes-1 is the index of current node being appended.
-
-			#for unseen node: append node, add edge, walk on.
-			if not self.dict.has_key(addr):
-				self.node.append(node(addr));
-				self.dict[addr] = self.num_nodes;
-				self.node[self.num_nodes].asn = asn;
-				self.node[self.num_nodes].asn_cc = asn_cc;
-				if self.prev_index != -1:
-					self.node[self.prev_index].child.append(self.num_nodes);
-					self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
-					self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
-
-					self.num_edges = self.num_edges + 1;
-
-				self.prev_index = self.num_nodes;
-				self.num_nodes = self.num_nodes + 1;
-			#for existing node: check for different predecessor, the walk on.
-			else:
-				child_index = self.dict[addr];
-				if self.prev_index != -1 and not self.is_child(self.prev_index, child_index):
-					self.node[self.prev_index].child.append(child_index);
-					self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
-					self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
-
-					self.num_edges = self.num_edges + 1;
-				self.prev_index = child_index;
+				break;
+			cnt = i;
+		
+		if(not is_included):
+			root = {"name":asn, "asn_cc":asn_cc, "num":1, "children":[]};
+			self.ptr.append(root);
+		else:
+			self.ptr[cnt]["num"] = self.ptr[cnt]["num"] + 1;
 		
 		self.ptr = self.ptr[cnt]["children"];
+				
+		#build graph from a trace.
+		#self.prev_index represents the index of the predecessor.
+		#self.num_nodes-1 is the index of current node being appended.
 
-	def build(self, file):
+		#for unseen node: append node, add edge, walk on.
+		if not self.dict.has_key(addr):
+			self.node.append(node(addr));
+			self.dict[addr] = self.num_nodes;
+			self.node[self.num_nodes].asn = asn;
+			self.node[self.num_nodes].asn_cc = asn_cc;
+			if self.prev_index != -1:
+				self.node[self.prev_index].child.append(self.num_nodes);
+				self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
+				self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
+
+				self.num_edges = self.num_edges + 1;
+
+			self.prev_index = self.num_nodes;
+			self.num_nodes = self.num_nodes + 1;
+		#for existing node: check for different predecessor, the walk on.
+		else:
+			child_index = self.dict[addr];
+			if self.prev_index != -1 and not self.is_child(self.prev_index, child_index):
+				self.node[self.prev_index].child.append(child_index);
+				self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
+				self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
+
+				self.num_edges = self.num_edges + 1;
+
+			self.prev_index = child_index;
+	
+
+	def build(self, file, source):
 		print "parsing traces...";
-		f = open(file, 'r');
-		for line in f.readlines():
-			self.prev_index = 0;
-			self.parse_trace(line);
-			self.num_traces = self.num_traces + 1;
-		f.close();
+		if(source == "caida"):
+			f = open(file, 'r');
+			for line in f.readlines():
+				self.prev_index = 0;
+				self.parse_trace(line);
+				self.num_traces = self.num_traces + 1;
+			f.close();
+		elif(source == "iplane"):
+			f = open(file, 'r');
+			trace_list = [];
+			lines = f.readlines();
+			i = 0;
+			for line in lines:
+				is_delimiter = False;
+				if re.findall("read",line) or re.findall("dest",line):
+					is_delimiter = True;
+				else:
+					trace_list.append(line.strip('\n'));
+				
+				if i >= len(lines)-1 or (is_delimiter == True and len(trace_list) != 0):
+					self.num_traces = self.num_traces + 1;
+					self.prev_index = 0;
+					self.parse_trace_iplane(trace_list);
+					trace_list = [];
+				
+				i = i+1;
+
+			f.close();
 		
+		#query asn_cc for root.
+		asn = self.lkp.get_asn_from_pfx(self.node[0].addr);
+		if (asn == None):
+			asn = "*";
+			asn_cc = "*";
+		if (asn != "*"):
+			asn_cc = self.lkp.get_cc_from_asn(asn);
+		
+		self.node[0].asn = asn;
+		self.node[0].asn_cc = asn_cc;
+
 		print "querying cc...";
 		#query country.
 		reader = geoip2.database.Reader('GeoLite2-City.mmdb');
 		for i in range( len(self.node) ):
 			is_found = True;
 			iso_code = "";
-			loc_desc_list = ["*","*","*"];
 
 			lon = 0;
 			lat = 0;
@@ -216,37 +269,28 @@ class topo_graph:
 			finally:
 				if not is_found:
 					iso_code = "*";
-					loc_desc = "*";
 				else:
 					lon = response.location.longitude;
 					lat = response.location.latitude;
 					
 					iso_code = response.country.iso_code;
-					city_name = response.city.name;
-					subdiv_name = response.subdivisions.most_specific.name;
-					loc_desc_list = ["*","*","*"];
-					if city_name != None:
-						loc_desc_list[0] = city_name;
-					if subdiv_name != None:
-						loc_desc_list[1] = subdiv_name;
-					if iso_code != None:
-						loc_desc_list[2] = iso_code;
 
 			self.node[i].country_code = iso_code;
-			self.node[i].loc_desc = loc_desc_list[0]+","+loc_desc_list[1]+","+loc_desc_list[2];
 			self.node[i].lon = lon;
 			self.node[i].lat = lat;
 			
-			
 		reader.close();
 
+		print "building networkx object...";
 		for i in range(len(self.node)-1,-1,-1):
 			self.graph.add_node(i);
 			for j in range(len(self.node[i].child)):
 				self.graph.add_edge(i,self.node[i].child[j],weight=self.node[i].child_rtt[j][2]);
 						
+		print "getting the largest connected component...";
 		#get the largest connected component.
-		self.graph0 = sorted(nx.connected_component_subgraphs(self.graph), key = len, reverse=True)[0];
+		#self.graph0 = sorted(nx.connected_component_subgraphs(self.graph), key = len, reverse=True)[0];
+		self.graph0 = max(nx.connected_component_subgraphs(self.graph), key = len);
 		
 		for i in range(self.num_nodes):
 			self.visited.append(False);
@@ -675,6 +719,20 @@ class topo_graph:
 		f_pt.write(json.dumps(result));
 		f_pt.close();
 	
+	def export_border_ip(self, graph_name):
+		result = {"nodes":[]};
+
+		for n in self.graph0.nodes():
+			node = self.node[n];
+			degree = node.indegree+len(node.child);
+
+			t = {"addr":node.addr, "country":node.country_code, "asn":node.asn, "asn_cc":node.asn_cc};
+			result["nodes"].append(t);
+
+		fb = open(graph_name+".border", 'w');
+		fb.write(json.dumps(result));
+		fb.close();
+
 	def merge(self, topo):
 		list = topo.node;
 		graph = topo.graph0.nodes();
@@ -724,3 +782,13 @@ def get_src(file_name):
 		src = list[1];
 		f.close();
 		return src;
+
+def get_src_iplane(file_name):
+	f = open(file_name,'r');
+	for line in f.readlines():
+		if re.findall("read",line) or re.findall("dest",line):
+			continue;
+		addr = line.split(' ')[1];
+		if (addr != "0.0.0.0"):
+			f.close();
+			return addr;

@@ -71,7 +71,7 @@ def main(argv):
 
 		print "building topo...";
 		topo = ip_topo.topo_graph(ip_topo.get_src(dir+raw_file));
-		topo.build(dir+raw_file);
+		topo.build(dir+raw_file,"caida");
 		topo.disp_stats();
 		print "generating map...";
 		topo.generate_map();
@@ -85,6 +85,8 @@ def main(argv):
 		topo.export_degree(dir+raw_file);
 		print "exporting path tree...";
 		topo.export_path_tree(dir+raw_file);
+		print "exporting border...";
+		topo.export_border_ip(dir+raw_file);
 
 	elif (source == "iplane" and type == "ip"):
 		dir = "data/iplane/ip/"+time+"/";
@@ -124,8 +126,8 @@ def main(argv):
 			for line in f_ls.readlines():
 				n = line.split('.',2)[2].strip('\n');
 				out_file = raw_file+"."+n
-				os.system("./readoutfile "+dir+dir_out+"/"+line.strip('\n')+" > "+out_file);
-				print ("./readoutfile "+dir+dir_out+"/"+line.strip('\n')+" > "+out_file);
+				os.system("./readoutfile "+dir+dir_out+"/"+line.strip('\n')+" > "+dir+out_file);
+				print ("./readoutfile "+dir+dir_out+"/"+line.strip('\n')+" > "+dir+out_file);
 			
 			f_ls.close();
 			print "finished dumping.";
@@ -142,6 +144,25 @@ def main(argv):
 		if(not is_included):
 			print "no such record";
 			exit();
+		
+		print "building topo...";
+		topo = ip_topo.topo_graph(ip_topo.get_src_iplane(dir+raw_file+"."+node));
+		topo.build(dir+raw_file+"."+node,"iplane");
+		topo.disp_stats();
+		print "generating map...";
+		topo.generate_map();
+		print "exporting map...";
+		topo.export_map(dir+raw_file+"."+node);
+		print "exporting simplified topo...";
+		topo.export_topo_simplified(dir+raw_file+"."+node);
+		print "exporting graphviz...";
+		topo.export_graphviz(dir+raw_file+"."+node);
+		print "exporting degree...";
+		topo.export_degree(dir+raw_file+"."+node);
+		print "exporting path tree...";
+		topo.export_path_tree(dir+raw_file+"."+node);
+		print "exporting border...";
+		topo.export_border_ip(dir+raw_file);
 
 if __name__ == "__main__":
 	main(sys.argv);

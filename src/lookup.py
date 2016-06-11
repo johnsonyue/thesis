@@ -155,6 +155,9 @@ class lookup:
 		bin = self.pfx2bin(ip.split('.',1)[1], 24);
 		result = [];
 
+		if (not self.ip_bst.has_key(class_a)):
+			return None;
+
 		ptr = self.ip_bst[class_a];
 		for b in bin:
 			if (ptr.has_key("asn")):

@@ -33,10 +33,12 @@ class CaidaParser(HTMLParser.HTMLParser):
 			href_value = self.get_attr_value("href", attrs);
 			self.file.append(href_value);
 
-def get_caida_tree(url, dir, username, password, file):
+def get_caida_tree(dir, username, password):
 	passwd_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm();
 	passwd_mgr.add_password("topo-data", url, username, password);
 
+	url = "https://topo-data.caida.org/team-probing/list-7.allpref24/";
+	file = open("caida",'wb');
 	opener = urllib2.build_opener(urllib2.HTTPBasicAuthHandler(passwd_mgr));
 	team_dir = ["team-1/daily/", "team-2/daily/", "team-3/daily/"]; 
 
@@ -50,6 +52,8 @@ def get_caida_tree(url, dir, username, password, file):
 	
 		for e in parser.dir:
 			get_year_dir(url+t+e, dir+team+"/", opener, file);
+	
+	file.close();
 
 def get_year_dir(url, dir, opener, file):
 	f = opener.open(url);
