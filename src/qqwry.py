@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import os
 import sys
 import socket
@@ -12,8 +10,6 @@ def decode_str(old):
     try:
         return unicode(old,'gbk').encode('utf-8')
     except:
-        # TODO: hack
-        # 当字符串解码失败，并且最一个字节值为'\x96',则去掉它，再解析
         if old[-1] == '\x96':
             try:
                 return unicode(old[:-1],'gbk').encode('utf-8') + '?'
@@ -30,7 +26,6 @@ class QQWry(object):
         self.db = None
         self.open_db()
         self.idx_start, self.idx_end = self._read_idx()
-        # IP索引总数
         self.total = (self.idx_end - self.idx_start) / 7 + 1
 
     def open_db(self):
@@ -225,91 +220,3 @@ def update_db(dbpath):
 
     os.unlink('copywrite.rar')
     os.unlink('qqwry.rar')
-
-
-def parse_cmd_args():
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        prog='qqwry',
-        description='qqwry is an IP address lookup process, for QQWry(cz88.net).')
-
-    group = parser.add_mutually_exclusive_group()
-
-    group.add_argument("-q", dest='query', action="store",
-                       nargs='+', # 可指定多个IP
-                       help="lookup ip.")
-
-    group.add_argument("--query-file", action="store",
-                       dest='query_file',
-                       nargs='+', # 可指定多个IP
-                       help="lookup ip from files")
-
-    group.add_argument("--dump", action="store_true",
-                       help="dump all ip information to a file.")
-
-    parser.add_argument("--update-db", action="store_true", default=False,
-                        help="update qqwry.dat")
-
-    parser.add_argument("--quiet", action="store_true", default=False,
-                        help="quiet mode.")
-
-    parser.add_argument('-f', '--dbpath',
-                        action="store",
-                        default='qqwry.dat',
-                        help='the path of qqwry.dat')
-
-    parser.add_argument('-o', '--output',
-                        action="store",
-                        default='ip.txt',
-                        help='save output of ip info to a file')
-
-
-    args = parser.parse_args()
-    if not (args.query or args.query_file or args.dump):
-        parser.print_help()
-        sys.exit(0)
-
-    return args
-
-
-def main():
-
-    args = parse_cmd_args()
-
-    if args.update_db:
-        update_db(args.dbpath)
-
-    if not os.path.exists(args.dbpath):
-        update_db(args.dbpath)
-
-    qqwry = QQWry(args.dbpath)
-    if not args.quiet:
-        print qqwry.version()
-        print 'index total: ', qqwry.total
-        print
-
-    if args.query:
-        for ip in args.query:
-            c, a = qqwry.query(ip)
-            print '%15s %s%s' % (ip, c, a)
-
-    elif args.query_file:
-        for p in args.query_file:
-            with open(p, 'r') as f:
-                while True:
-                    ip = f.readline().strip()
-                    if not ip:
-                        break
-
-                    c, a = qqwry.query(ip)
-                    print '%15s %s%s' % (ip, c, a)
-
-    elif args.dump:
-        print 'dumping to %s ...' % args.output
-        qqwry.output()
-
-
-if __name__ == '__main__':
-
-    main()

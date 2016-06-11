@@ -1,4 +1,5 @@
 import sys
+import os
 reload(sys);
 sys.setdefaultencoding('utf-8');
 import re
@@ -22,6 +23,8 @@ from mpl_toolkits.basemap import Basemap
 
 import json
 
+import qqwry
+
 #class node represents a node in topo graph.
 class node:
 	def __init__(self,ip):
@@ -29,6 +32,8 @@ class node:
 		self.country_code = "";
 		self.asn = "";
 		self.asn_cc = "";
+		self.czdb_country = "";
+		self.czdb_area = "";
 		self.is_border = False;
 		self.is_ascc_border = False;
 		self.lon = 0;
@@ -51,9 +56,16 @@ class topo_graph:
 		self.num_traces = 0;
 		self.path_len_dist = [0 for i in range(1,100)];
 
+		#ip lookup.
 		self.lkp = lookup.lookup();
 		self.ptr=[];
 		self.path_tree = [];
+		
+		#czdb.
+		self.czdb_path = "qqwry.dat";
+    		if not os.path.exists(self.czdb_path):
+        		qqwry.update_db(self.czdb_path);
+    		self.qqwry = qqwry.QQWry(self.czdb_path);
 		
 		#add root.
 		self.num_edges = 0;
@@ -257,6 +269,7 @@ class topo_graph:
 		#query country.
 		reader = geoip2.database.Reader('GeoLite2-City.mmdb');
 		for i in range( len(self.node) ):
+			#maxmind.
 			is_found = True;
 			iso_code = "";
 
@@ -278,8 +291,12 @@ class topo_graph:
 			self.node[i].country_code = iso_code;
 			self.node[i].lon = lon;
 			self.node[i].lat = lat;
+
+			#czdb.
+            		self.node[i].czdb_country, self.node[i].czdb_area = self.qqwry.query(self.node[i].addr);
 			
 		reader.close();
+		
 
 		print "building networkx object...";
 		for i in range(len(self.node)-1,-1,-1):
@@ -732,7 +749,7 @@ class topo_graph:
 		fb = open(graph_name+".border", 'w');
 		fb.write(json.dumps(result));
 		fb.close();
-
+	
 	def merge(self, topo):
 		list = topo.node;
 		graph = topo.graph0.nodes();
