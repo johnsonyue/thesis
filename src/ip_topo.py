@@ -676,7 +676,7 @@ class topo_graph:
 		for d in deg_num.keys():
 			exp=0;
 			for k in n_deg[d].keys():
-				exp = exp + (float)(k*n_deg[d][k])/deg_num[d];
+				exp = exp + (float)(k*n_deg[d][k])/(deg_num[d]*d);
 			
 			self.knn[d] = exp;
 				
