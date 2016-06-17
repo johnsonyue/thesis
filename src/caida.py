@@ -99,3 +99,22 @@ def get_url(list_file_name, time, node):
 	url = target.split(':', 1)[1];
 	url = url.strip('\n');
 	return url;
+
+def get_time_list(list_file_name, time):
+	str = time;
+	target = "";
+	res = [];
+	
+	is_included = False;
+	for line in open(list_file_name, 'r'):
+		if (len(re.findall(str,line)) != 0):
+			is_included = True;
+			target = line;
+			url = target.split(':', 1)[1];
+			url = url.strip('\n');
+			res.append(url);
+	
+	if (not is_included):
+		return None;
+
+	return res;

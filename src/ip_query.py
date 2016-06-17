@@ -30,7 +30,7 @@ def read_auth(account):
 	return ret;
 
 def main(argv):
-	if (len(argv) != 6):
+	if (len(argv) != 6 and len(argv) != 7):
 		usage();
 		exit();
 	
@@ -39,8 +39,11 @@ def main(argv):
 	time = argv[3];
 	node = argv[4];
 	target = argv[5];
+	is_parse = "";
+	if (len(argv) == 7):
+		is_parse = argv[6];
 	
-	if (source == "caida" and type == "ip"):
+	if (source == "caida" and type == "ip" and node != "all"):
 		dir = "data/caida/ip/"+time+"/"+node+"/";
 		file = source+"."+type+"."+time+"."+node+"."+target;
 		raw_file = source+"."+type+"."+time+"."+node;
@@ -69,24 +72,57 @@ def main(argv):
 			os.system("sc_analysis_dump "+dir+raw_file+".warts > "+dir+raw_file); 
 			print "finished dumping.";
 
-		print "building topo...";
-		topo = ip_topo.topo_graph(ip_topo.get_src(dir+raw_file));
-		topo.build(dir+raw_file,"caida");
-		topo.disp_stats();
-		print "generating map...";
-		topo.generate_map();
-		print "exporting map...";
-		topo.export_map(dir+raw_file);
-		print "exporting simplified topo...";
-		topo.export_topo_simplified(dir+raw_file);
-		print "exporting graphviz...";
-		topo.export_graphviz(dir+raw_file);
-		print "exporting degree...";
-		topo.export_degree(dir+raw_file);
-		print "exporting path tree...";
-		topo.export_path_tree(dir+raw_file);
-		print "exporting border...";
-		topo.export_border_ip(dir+raw_file);
+		if not is_parse == "not":
+			print "building topo...";
+			topo = ip_topo.topo_graph(ip_topo.get_src(dir+raw_file),True);
+			topo.build(dir+raw_file,"caida",True,True);
+			topo.disp_stats();
+			print "generating map...";
+			topo.generate_map();
+			print "exporting map...";
+			topo.export_map(dir+raw_file);
+			print "exporting simplified topo...";
+			topo.export_topo_simplified(dir+raw_file);
+			print "exporting graphviz...";
+			topo.export_graphviz(dir+raw_file);
+			print "exporting degree...";
+			topo.export_degree(dir+raw_file);
+			print "exporting path tree...";
+			topo.export_path_tree(dir+raw_file);
+			print "exporting border...";
+			topo.export_border_ip(dir+raw_file);
+
+	elif (source == "caida" and type == "ip" and node == "all"):
+		dir = "data/caida/ip/"+time+"/all/";
+		file = source+"."+type+"."+time+".all."+target;
+		if not os.path.exists(dir):
+			os.makedirs(dir);
+		
+		if os.path.exists(dir+file):
+			print "already exists";
+			exit();
+		else:
+			url_list = caida.get_time_list("caida", time);
+			for u in url_list:
+				node = u.split('/')[9].split('.')[5];
+				raw_file = source+"."+type+"."+time+"."+node;
+				if not os.path.exists(dir+raw_file):
+					print "raw file "+raw_file+" does not exist, start downloading...";
+					auth = read_auth("caida");
+					if ( len(auth) != 2 ):
+						print "auth failed";
+						exit();
+		
+					url = caida.get_url("caida", time, node);
+					if ( url == None):
+						print "no such record found";
+	
+					download_worker.download_caida_restricted_worker(url, dir, raw_file+".warts.gz", auth[0], auth[1]);
+					print "finished downloading.";
+					print "dumping...";
+					os.system("gunzip -q "+dir+raw_file+".warts.gz");
+					os.system("sc_analysis_dump "+dir+raw_file+".warts > "+dir+raw_file); 
+					print "finished dumping.";
 
 	elif (source == "iplane" and type == "ip"):
 		dir = "data/iplane/ip/"+time+"/";
@@ -146,8 +182,8 @@ def main(argv):
 			exit();
 		
 		print "building topo...";
-		topo = ip_topo.topo_graph(ip_topo.get_src_iplane(dir+raw_file+"."+node));
-		topo.build(dir+raw_file+"."+node,"iplane");
+		topo = ip_topo.topo_graph(ip_topo.get_src_iplane(dir+raw_file+"."+node),True);
+		topo.build(dir+raw_file+"."+node,"iplane",True,True);
 		topo.disp_stats();
 		print "generating map...";
 		topo.generate_map();

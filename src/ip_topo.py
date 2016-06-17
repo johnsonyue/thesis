@@ -41,12 +41,13 @@ class node:
 
 		self.child = [];
 		self.child_rtt = [];
+		self.parent = [];
 		
 		self.indegree = 0;
 
 #topo graph is a directed graph.
 class topo_graph:
-	def __init__(self, root):
+	def __init__(self, root, is_lookup=True):
 		#nodes.
 		self.node = [];
 		#dict for quick node lookup.
@@ -55,12 +56,16 @@ class topo_graph:
 		#stats for traces.
 		self.num_traces = 0;
 		self.path_len_dist = [0 for i in range(1,100)];
-
-		#ip lookup.
-		self.lkp = lookup.lookup();
+		#path tree.
 		self.ptr=[];
 		self.path_tree = [];
-		
+
+		if (is_lookup):
+			#ip lookup.
+			self.lkp = lookup.lookup();
+		else:
+			self.lkp = None;
+			
 		#czdb.
 		self.czdb_path = "qqwry.dat";
     		if not os.path.exists(self.czdb_path):
@@ -106,6 +111,9 @@ class topo_graph:
 		self.data = {"nodes":{}, "edges":[]};
 		
 		self.visited = [];
+		
+		#knn.
+		self.knn = {};
 	
 	def clear_visited(self):
 		for i in range(self.num_nodes):
@@ -156,6 +164,16 @@ class topo_graph:
 				return True;
 	
 		return False;
+	
+	def add_parent(self, cind, pind):
+		is_included = False;
+		for p in self.node[cind].parent:
+			if p == pind:
+				is_included = True;
+				break;
+		
+		if (is_included):
+			self.node[cind].parent.append(pind);
 
 	#each hop contains a tuple of ip,rtt,nTries.
 	def parse_hop(self, hop):
@@ -168,7 +186,10 @@ class topo_graph:
 		
 		cnt = -1;
 		#asn.
-		asn = self.lkp.get_asn_from_pfx(addr);
+		if (self.lkp):
+			asn = self.lkp.get_asn_from_pfx(addr);
+		else:
+			asn = None;
 		if (asn == None):
 			asn = "*";
 			asn_cc = "*";
@@ -198,6 +219,8 @@ class topo_graph:
 		#for unseen node: append node, add edge, walk on.
 		if not self.dict.has_key(addr):
 			self.node.append(node(addr));
+			if(self.prev_index != -1):
+				self.add_parent(self.num_nodes, self.prev_index);
 			self.dict[addr] = self.num_nodes;
 			self.node[self.num_nodes].asn = asn;
 			self.node[self.num_nodes].asn_cc = asn_cc;
@@ -213,6 +236,9 @@ class topo_graph:
 		#for existing node: check for different predecessor, the walk on.
 		else:
 			child_index = self.dict[addr];
+			if(self.prev_index != -1):
+				self.add_parent(child_index, self.prev_index);
+
 			if self.prev_index != -1 and not self.is_child(self.prev_index, child_index):
 				self.node[self.prev_index].child.append(child_index);
 				self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
@@ -222,8 +248,56 @@ class topo_graph:
 
 			self.prev_index = child_index;
 	
+	def query_cc(self):
+		#query asn_cc for root.
+		if (self.lkp):
+			asn = self.lkp.get_asn_from_pfx(self.node[0].addr);
+		else:
+			asn = None;
+		if (asn == None):
+			asn = "*";
+			asn_cc = "*";
+		if (asn != "*"):
+			asn_cc = self.lkp.get_cc_from_asn(asn);
+		
+		self.node[0].asn = asn;
+		self.node[0].asn_cc = asn_cc;
 
-	def build(self, file, source):
+		print "querying cc...";
+		#query country.
+		reader = geoip2.database.Reader('GeoLite2-City.mmdb');
+
+		for i in range( len(self.node) ):
+			#maxmind.
+			is_found = True;
+			iso_code = "";
+
+			lon = 0;
+			lat = 0;
+			try:
+				response = reader.city(self.node[i].addr);
+			except geoip2.errors.AddressNotFoundError:
+				is_found = False;
+			finally:
+				if not is_found:
+					iso_code = "*";
+				else:
+					lon = response.location.longitude;
+					lat = response.location.latitude;
+					
+					iso_code = response.country.iso_code;
+
+			self.node[i].country_code = iso_code;
+			self.node[i].lon = lon;
+			self.node[i].lat = lat;
+
+			#czdb.
+			self.node[i].czdb_country, self.node[i].czdb_area = self.qqwry.query(self.node[i].addr);
+		
+		reader.close();
+
+
+	def build(self, file, source, is_query_cc=True, is_mark_border=True):
 		print "parsing traces...";
 		if(source == "caida"):
 			f = open(file, 'r');
@@ -254,49 +328,8 @@ class topo_graph:
 
 			f.close();
 		
-		#query asn_cc for root.
-		asn = self.lkp.get_asn_from_pfx(self.node[0].addr);
-		if (asn == None):
-			asn = "*";
-			asn_cc = "*";
-		if (asn != "*"):
-			asn_cc = self.lkp.get_cc_from_asn(asn);
-		
-		self.node[0].asn = asn;
-		self.node[0].asn_cc = asn_cc;
-
-		print "querying cc...";
-		#query country.
-		reader = geoip2.database.Reader('GeoLite2-City.mmdb');
-		for i in range( len(self.node) ):
-			#maxmind.
-			is_found = True;
-			iso_code = "";
-
-			lon = 0;
-			lat = 0;
-			try:
-				response = reader.city(self.node[i].addr);
-			except geoip2.errors.AddressNotFoundError:
-				is_found = False;
-			finally:
-				if not is_found:
-					iso_code = "*";
-				else:
-					lon = response.location.longitude;
-					lat = response.location.latitude;
-					
-					iso_code = response.country.iso_code;
-
-			self.node[i].country_code = iso_code;
-			self.node[i].lon = lon;
-			self.node[i].lat = lat;
-
-			#czdb.
-            		self.node[i].czdb_country, self.node[i].czdb_area = self.qqwry.query(self.node[i].addr);
-			
-		reader.close();
-		
+		if (is_query_cc):
+			self.query_cc();
 
 		print "building networkx object...";
 		for i in range(len(self.node)-1,-1,-1):
@@ -312,11 +345,12 @@ class topo_graph:
 		for i in range(self.num_nodes):
 			self.visited.append(False);
 		
-		#mark borders.
-		print "marking borders...";
-		self.clear_visited();
-		self.mark_borders();
-		print "borders marked";
+		if(is_mark_border):
+			#mark borders.
+			print "marking borders...";
+			self.clear_visited();
+			self.mark_borders();
+			print "borders marked";
 		
 	def disp_stats(self):
 		print "total traces processed:",self.num_traces;
@@ -596,20 +630,39 @@ class topo_graph:
 		
 		plt.savefig(graph_name+"_map.png",dpi=300);
 
-	def draw_bet(self, graph_name):
-		#get degree dist.
-		for n in self.graph0.nodes():
-			bet = self.bet[n];
-			self.bet_dist[int(bet*100)/1] = self.bet_dist[int(bet*100)/1] + 1;
+	def calc_knn(self):
+		deg_num = {};
+		n_deg = {};
+		for i in range( 1,len(self.node) ):
+			degree = self.node[i].indegree+len(self.node[i].child);
+			if (deg_num.has_key(degree)):
+				deg_num[degree] = deg_num[degree] + 1;
+			else:
+				deg_num[degree] = 1;
+			
+			if ( not n_deg.has_key(degree) ):
+				n_deg[degree] = {};
+			for c in self.node[i].child:
+				cdegree = self.node[c].indegree+len(self.node[c].child);
+				if (n_deg[degree].has_key(cdegree)):
+					n_deg[degree][cdegree] = n_deg[degree][cdegree] + 1;
+				else:
+					n_deg[degree][cdegree] = 1;
+			for p in self.node[i].parent:
+				pdegree = self.node[p].indegree+len(self.node[p].child);
+				if (n_deg[degree].has_key(pdegree)):
+					n_deg[degree][pdegree] = n_deg[degree][pdegree] + 1;
+				else:
+					n_deg[degree][pdegree] = 1;
 		
-		#draw bet distribution.
-		plt.figure(figsize=(8,8));
-		plt.yscale('log');
-		plt.xscale('log');
-
-		plt.plot(range(100), self.bet_dist);
-		plt.savefig(graph_name+"_bet_dist.png");
-
+		#calc_knn.
+		for d in deg_num.keys():
+			exp=0;
+			for k in n_deg[d].keys():
+				exp = exp + (float)(k*n_deg[d][k])/deg_num[d];
+			
+			self.knn[d] = exp;
+				
 	
 	def export_topo(self, graph_name):
 		f_topo = open(graph_name+"_topo", 'w');
@@ -741,15 +794,13 @@ class topo_graph:
 
 		for n in self.graph0.nodes():
 			node = self.node[n];
-			degree = node.indegree+len(node.child);
-
-			t = {"addr":node.addr, "country":node.country_code, "asn":node.asn, "asn_cc":node.asn_cc};
+			t = {"addr":node.addr, "country":node.country_code, "asn":node.asn, "asn_cc":node.asn_cc, "czdb_country":node.czdb_country, "czdb_area":node.czdb_area};
 			result["nodes"].append(t);
 
 		fb = open(graph_name+".border", 'w');
 		fb.write(json.dumps(result));
 		fb.close();
-	
+		
 	def merge(self, topo):
 		list = topo.node;
 		graph = topo.graph0.nodes();
