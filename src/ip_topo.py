@@ -44,6 +44,8 @@ class node:
 		self.parent = [];
 		
 		self.indegree = 0;
+		#indegree is deprecated.
+		self.degree = 0;
 
 #topo graph is a directed graph.
 class topo_graph:
@@ -83,7 +85,7 @@ class topo_graph:
 		self.dict[root] = 0;
 		
 		#rtt.
-		self.max_rtt = 0;
+		self.max_rtt = -1;
 		self.min_rtt = 10000;
 		self.rtt_list = [];
 		self.rtt_dist_x = [];
@@ -110,7 +112,7 @@ class topo_graph:
 		#data structure for simplified topo.
 		self.data = {"nodes":{}, "edges":[]};
 		
-		self.visited = [];
+		self.visited = {};
 		
 		#knn.
 		self.knn = {};
@@ -123,6 +125,8 @@ class topo_graph:
 		if re.findall("#",trace):
 			return False;
 
+		
+		self.num_traces = self.num_traces + 1;
 		hops = trace.strip().split('\t');
 		
 		#record path len to get the dist.
@@ -242,7 +246,7 @@ class topo_graph:
 			if self.prev_index != -1 and not self.is_child(self.prev_index, child_index):
 				self.node[self.prev_index].child.append(child_index);
 				self.node[self.prev_index].child_rtt.append( (0, self.prev_index, rtt) );
-				self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
+				self.node[child_index].indgree = self.node[child_index].indegree + 1;
 
 				self.num_edges = self.num_edges + 1;
 
@@ -296,6 +300,9 @@ class topo_graph:
 		
 		reader.close();
 
+	def calc_deg(self):
+		for i in ( range(len(self.node)) ):
+			self.node[i].degree = self.graph.degree(i);
 
 	def build(self, file, source, is_query_cc=True, is_mark_border=True):
 		print "parsing traces...";
@@ -304,7 +311,6 @@ class topo_graph:
 			for line in f.readlines():
 				self.prev_index = 0;
 				self.parse_trace(line);
-				self.num_traces = self.num_traces + 1;
 			f.close();
 		elif(source == "iplane"):
 			f = open(file, 'r');
@@ -342,8 +348,11 @@ class topo_graph:
 		#self.graph0 = sorted(nx.connected_component_subgraphs(self.graph), key = len, reverse=True)[0];
 		self.graph0 = max(nx.connected_component_subgraphs(self.graph), key = len);
 		
+		print "calculating degree...";
+		self.calc_deg();
+		
 		for i in range(self.num_nodes):
-			self.visited.append(False);
+			self.visited[i] = False;
 		
 		if(is_mark_border):
 			#mark borders.
@@ -356,10 +365,19 @@ class topo_graph:
 		print "total traces processed:",self.num_traces;
 		print "total nodes:",len(self.node);
 		print "total edges:",self.num_edges;
-
+	
+	def get_rtt_range(self):
+		#get rtt dist.
+		for a,b in self.graph0.edges():
+			rtt = float(self.graph0[a][b]['weight']);
+			if self.max_rtt < rtt:
+				self.max_rtt = rtt;
+			if self.min_rtt > rtt:
+				self.min_rtt = rtt;
+		
 	def draw_rtt(self, graph_name):
 		#get rtt dist.
-		self.max_rtt = 0;
+		self.max_rtt = -1;
 		self.min_rtt = 10000;
 		for a,b in self.graph0.edges():
 			rtt = float(self.graph0[a][b]['weight']);
@@ -403,7 +421,8 @@ class topo_graph:
 	def draw_deg(self, graph_name):
 		#get degree dist.
 		for n in self.graph0.nodes():
-			degree = self.node[n].indegree+len(self.node[n].child);
+			#degree = self.node[n].indegree+len(self.node[n].child);
+			degree = self.node[n].degree;
 			self.degree_list.append(degree);
 		
 		temp_list = sorted(self.degree_list);
@@ -451,6 +470,8 @@ class topo_graph:
 		min_rtt = self.min_rtt;
 		if self.max_rtt > 100:
 			max_rtt = 100;
+		if max_rtt <= min_rtt:
+			max_rtt = min_rtt;
 		rtt_norm = clrs.Normalize(vmin=min_rtt, vmax=max_rtt);
 		#use gist_rainbow color map to convert gray scale value to colored rgb.
 		scalar_map = cm.ScalarMappable(norm=rtt_norm,cmap=plt.cm.gist_rainbow); 
@@ -479,7 +500,8 @@ class topo_graph:
 		labels[0] = "root:",self.node[0].addr;
 
 		for n in self.graph0.nodes():
-			degree = self.node[n].indegree+len(self.node[n].child);
+			#degree = self.node[n].indegree+len(self.node[n].child);
+			degree = self.node[n].degree;
 			if degree > 20:
 				labels[n] = self.node[n].addr+" ("+str(degree)+")";
 
@@ -487,7 +509,7 @@ class topo_graph:
 		
 		print "\texecuting graphviz... ",;
 		#use graphviz layout to get a hierachical view of the topo.
-		plt.figure(figsize=(50,50));
+		plt.figure(figsize=(10,10));
 		layout = nx.graphviz_layout(self.graph0,prog="twopi",root=0);
 		print "done";
 
@@ -495,7 +517,7 @@ class topo_graph:
 		#draw topo graph.
 		nx.draw(self.graph0,layout,with_labels=False,alpha=0.5,node_size=15,edge_color=edge_colors,node_color=node_colors);
 		nx.draw_networkx_labels(self.graph0,layout,labels,font_size=10);
-		plt.savefig(graph_name+"_topo.png",dpi=300);
+		plt.savefig(graph_name+"_topo.png",dpi=100);
 		print "done";
 	
 	#if node doesn't have the cc, assume it to be within the same cc of it's parent.
@@ -634,7 +656,8 @@ class topo_graph:
 		deg_num = {};
 		n_deg = {};
 		for i in range( 1,len(self.node) ):
-			degree = self.node[i].indegree+len(self.node[i].child);
+			#degree = self.node[i].indegree+len(self.node[i].child);
+			degree = self.node[i].degree;
 			if (deg_num.has_key(degree)):
 				deg_num[degree] = deg_num[degree] + 1;
 			else:
@@ -642,19 +665,13 @@ class topo_graph:
 			
 			if ( not n_deg.has_key(degree) ):
 				n_deg[degree] = {};
-			for c in self.node[i].child:
-				cdegree = self.node[c].indegree+len(self.node[c].child);
-				if (n_deg[degree].has_key(cdegree)):
-					n_deg[degree][cdegree] = n_deg[degree][cdegree] + 1;
+			for n in self.graph.neighbors(i):
+				ndegree = self.node[n].degree;
+				if (n_deg[degree].has_key(ndegree)):
+					n_deg[degree][ndegree] = n_deg[degree][ndegree] + 1;
 				else:
-					n_deg[degree][cdegree] = 1;
-			for p in self.node[i].parent:
-				pdegree = self.node[p].indegree+len(self.node[p].child);
-				if (n_deg[degree].has_key(pdegree)):
-					n_deg[degree][pdegree] = n_deg[degree][pdegree] + 1;
-				else:
-					n_deg[degree][pdegree] = 1;
-		
+					n_deg[degree][ndegree] = 1;
+					
 		#calc_knn.
 		for d in deg_num.keys():
 			exp=0;
@@ -771,7 +788,8 @@ class topo_graph:
 
 		for n in self.graph0.nodes():
 			node = self.node[n];
-			degree = node.indegree+len(node.child);
+			#degree = node.indegree+len(node.child);
+			degree = node.degree;
 
 			t = {"addr":node.addr, "is_border":node.is_border, "country":node.country_code, "lon":node.lon, "lat":node.lat, "degree":degree};
 			result["nodes"].append(t);
@@ -802,12 +820,13 @@ class topo_graph:
 		fb.close();
 		
 	def merge(self, topo):
-		list = topo.node;
 		graph = topo.graph0.nodes();
 		topo.clear_visited();
 		for i in graph:
 			if not topo.visited[i]:
 				self.add_node(topo, i, topo.node[i]);
+		self.graph0 = max(nx.connected_component_subgraphs(self.graph), key = len);
+		self.calc_deg();
 	
 	def add_node(self, topo, ind, n):
 		index = -1;
@@ -821,24 +840,35 @@ class topo_graph:
 			if not topo.visited[c]:
 				ret = self.add_node(topo, c, list[c]);
 				child.append(ret);
+		#self.node[self.num_nodes-1].indgree = self.node[self.num_nodes-1].indegree + 1;
 
 		#set index to return.
 		#append or update node.
 		if not self.dict.has_key(n.addr):
 			self.node.append(n);
-			index = len(self.node);
+			index = len(self.node) - 1;
+			self.dict[n.addr] = index;
+			self.graph.add_node(index);
 			n.child = child;
+			for j in range(len(n.child)):
+				self.graph.add_edge(index,n.child[j],weight=n.child_rtt[j][2]);
+
+			self.num_nodes = self.num_nodes + 1;
+			self.num_edges = self.num_edges + len(n.child);
 		else:
 			index = self.dict[n.addr];
-			for c in child:
+			for j in range(len(n.child)):
 				is_included = False;
+				c = n.child[j];
 				for ch in self.node[index].child:
 					if c == ch:
 						is_included = True;
 						break;
 				if not is_included:
 					self.node[index].child.append(c);
-	
+					self.graph.add_edge(index,c,weight=n.child_rtt[j][2]);
+					self.num_edges = self.num_edges + 1;
+
 		return index;
 		
 def get_src(file_name):
