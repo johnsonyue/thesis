@@ -348,8 +348,8 @@ class topo_graph:
 		#self.graph0 = sorted(nx.connected_component_subgraphs(self.graph), key = len, reverse=True)[0];
 		self.graph0 = max(nx.connected_component_subgraphs(self.graph), key = len);
 		
-		print "calculating degree...";
-		self.calc_deg();
+		#print "calculating degree...";
+		#self.calc_deg();
 		
 		for i in range(self.num_nodes):
 			self.visited[i] = False;
@@ -826,7 +826,6 @@ class topo_graph:
 			if not topo.visited[i]:
 				self.add_node(topo, i, topo.node[i]);
 		self.graph0 = max(nx.connected_component_subgraphs(self.graph), key = len);
-		self.calc_deg();
 	
 	def add_node(self, topo, ind, n):
 		index = -1;

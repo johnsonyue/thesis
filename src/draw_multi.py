@@ -160,8 +160,10 @@ plt.legend();
 plt.savefig("thesis_length_density.png");
 
 #draw knn.
+topo_08.calc_deg();
 topo_08.calc_knn();
 #topo_12.calc_knn();
+topo_08.calc_deg();
 topo_16.calc_knn();
 
 plt.figure(figsize=(8,8));
