@@ -57,7 +57,7 @@ class topo_graph:
 		
 		#stats for traces.
 		self.num_traces = 0;
-		self.path_len_dist = [0 for i in range(1,100)];
+		self.path_len_dist = [0 for i in range(1,1000)];
 		#path tree.
 		self.ptr=[];
 		self.path_tree = [];
@@ -156,6 +156,22 @@ class topo_graph:
 			
 			if (addr != "0.0.0.0"):
 				hop_list = [addr, rtt];
+			self.parse_hop(hop_list);
+
+		return True;
+	
+	def parse_trace_lg(self, trace_list):
+		#record path len to get the dist.
+		self.path_len_dist[len(trace_list)] = self.path_len_dist[len(trace_list)] + 1;
+
+		self.ptr = self.path_tree;
+		for i in range(len(trace_list)):
+			hop = trace_list[i];
+			hop_list = [];
+			addr = hop.split(':')[1];
+			
+			if (re.findall("\*",addr)):
+				hop_list = [addr, 0];
 			self.parse_hop(hop_list);
 
 		return True;
@@ -333,7 +349,31 @@ class topo_graph:
 				i = i+1;
 
 			f.close();
-		
+		elif(source == "lg"):
+			f = open(file, 'r');
+			trace_list = [];
+			lines = f.readlines();
+			i = 0;
+			for line in lines:
+				if line == "":
+					i = i+1;
+					continue;
+				is_delimiter = False;
+				if re.findall("-",line):
+					is_delimiter = True;
+				else:
+					trace_list.append(line.strip('\n'));
+				
+				if i >= len(lines)-1 or (is_delimiter == True and len(trace_list) != 0):
+					self.num_traces = self.num_traces + 1;
+					self.prev_index = 0;
+					self.parse_trace_lg(trace_list);
+					trace_list = [];
+				
+				i = i+1;
+
+			f.close();
+
 		if (is_query_cc):
 			self.query_cc();
 
@@ -519,6 +559,14 @@ class topo_graph:
 		nx.draw_networkx_labels(self.graph0,layout,labels,font_size=10);
 		plt.savefig(graph_name+"_topo.png",dpi=100);
 		print "done";
+	
+	def draw_knn(self, graph_name):
+		plt.figure(figsize=(8,8));
+		plt.yscale('log');
+		plt.xscale('log');
+
+		plt.plot(self.knn.keys(), self.knn.values(), 'rx'); 
+		plt.savefig(graph_name+".knn.png");
 	
 	#if node doesn't have the cc, assume it to be within the same cc of it's parent.
 	def recursive_mark(self, parent_code, parent_ascc, root):
@@ -889,3 +937,6 @@ def get_src_iplane(file_name):
 		if (addr != "0.0.0.0"):
 			f.close();
 			return addr;
+
+def get_src_lg():
+	return "0.0.0.0";
