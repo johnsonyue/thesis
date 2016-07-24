@@ -1,6 +1,7 @@
 import HTMLParser
 import urllib2
 import socket
+import time
 from multiprocessing import Pool
 
 import sys
@@ -121,6 +122,8 @@ class ProxyPool():
 			res = False;
 		except socket.error, e:
 			res = False;
+		except Exception, e:
+			res = False;
 
 		if (code == 200):
 			res = True;
@@ -171,6 +174,8 @@ class ProxyPool():
 		total_page = 1;
 		cur_page = 1;
 		while(cur_page <= total_page):
+			start_time = time.time();
+
 			print "page #"+str(cur_page);
 			if (cur_page == 1):
 				self.parser = ProxyParser(True);
@@ -203,6 +208,10 @@ class ProxyPool():
 			print "total usable proxy ip num: "+str(len(self.proxy_list));
 
 			cur_page = cur_page + 1;
+			
+			end_time = time.time();
+			if (end_time - start_time < 1.0):
+				time.sleep(end_time - start_time);
 						
 	
 	def export_proxy(self, file_name):
