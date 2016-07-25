@@ -2,7 +2,8 @@ import HTMLParser
 import urllib2
 import socket
 import time
-from multiprocessing import Pool
+import threading
+import os
 
 import sys
 reload(sys);
@@ -80,7 +81,7 @@ class ProxyPool():
 		self.test_url = "http://data.caida.org/datasets/topology/ark/";
 		self.proxy_list = [];
 		self.ip_dict = {};
-		if (file != ""):
+		if (file != "" and os.path.exists(file)):
 			f = open(file);
 			i = 0;
 			for line in f.readlines():
@@ -88,6 +89,9 @@ class ProxyPool():
 				self.proxy_list.append(svr);
 				self.ip_dict[svr] = i;
 				i = i + 1;
+		elif (file != ""):
+			f = open(file,'wb');
+			f.close();
 			
 	def translate_uptime(self, uptime):
 		num = u"";
@@ -107,51 +111,49 @@ class ProxyPool():
 				res.append(self.parser.ip[i]+":"+self.parser.port[i]);
 		return res;
 	
-	def test_proxy(self, server):
+	def test_proxy(self, server, ind=-1, res_list=[]):
 		proxy = "http://"+server;
 		opener = urllib2.build_opener(urllib2.ProxyHandler({"http":proxy}));
 		code = 0;
 		res = False;
 		try:
-			code = opener.open(self.test_url, timeout = 5).getcode();
-		except urllib2.HTTPError ,e:
-			res = False;
-		except urllib2.URLError, e:
-			res = False;
-		except socket.timeout, e:
-			res = False;
-		except socket.error, e:
-			res = False;
-		except Exception, e:
+			code = opener.open(self.test_url, timeout = 10).getcode();
+		except:
 			res = False;
 
 		if (code == 200):
 			res = True;
 		
-		if (res_list != None and res_ind != -1):
-			res_list[res_ind] = res;
+		if (ind != -1):
+			res_list[ind] = res;
 		
-		print (server+" "+str(res));
-
+		print (server+" "+str(res)); 
 		return res;
-		
-	
-	def test_list(self, svr_list, mp_num=1):
+
+	def test_list(self, svr_list, mt_num=1):
 		ret = [];
-		if (mp_num > 1):
-			p = Pool(mp_num);
+		if (mt_num > 1):
 			res_list = [False for i in range(len(svr_list))];
-
+			th_pool = [];
+			
+			cnt = 0;
 			for i in range(len(svr_list)):
-				svr = svr_list[i];
-				res = p.apply_async(self.test_proxy, args=(svr, ));
-				if (res):
-					ret.append(svr);
+				th = threading.Thread(target=self.test_proxy, args=(svr_list[i], i, res_list, ));
+				th_pool.append(th);
+				cnt = cnt + 1;
+				if (cnt >= mt_num or i == len(svr_list)-1):
+					for th in th_pool:
+						th.start();
+					for th in th_pool:
+						th.join();
+					cnt = 0;
+					th_pool = [];
 
-			p.close();
-			p.join();
-		
-		elif(mp_num == 1):
+			for i in range(len(res_list)):
+				if(res_list[i]):
+					ret.append(svr_list[i]);
+					
+		elif(mt_num == 1):
 			for i in range(len(svr_list)):
 				svr = svr_list[i];
 				if (self.test_proxy(svr)):
@@ -159,11 +161,11 @@ class ProxyPool():
 		
 		return ret;
 	
-	def update_proxy(self, check_legacy = False, max_page_num = 0, mp_num = 1):
+	def update_proxy(self, check_legacy = False, max_page_num = 0, mt_num = 1):
 		#updating legacy list.
 		if (check_legacy):
 			print "legacy list";
-			self.proxy_list = self.test_list(self.proxy_list, mp_num);
+			self.proxy_list = self.test_list(self.proxy_list, mt_num);
 			self.ip_dict = {};
 			for i in range(len(self.proxy_list)):
 				svr = self.proxy_list[i];
@@ -194,8 +196,9 @@ class ProxyPool():
 			elif (cur_page == 1):
 				total_page = max_page_num;
 
+			#testing list.
 			svr_list = self.get_candidate_proxy();
-			res_list = self.test_list(svr_list, mp_num);
+			res_list = self.test_list(svr_list, mt_num);
 			
 			#adding to proxy_list.
 			for i in range(len(res_list)):
@@ -204,15 +207,14 @@ class ProxyPool():
 					self.proxy_list.append(svr);
 					self.ip_dict[svr] = len(self.proxy_list)-1;
 
-			print "page #"+str(cur_page)+" finished testing,"+str(len(res_list))+"/"+str(len(svr_list))+" true.";
+			print "page #"+str(cur_page)+" finished testing, "+str(len(res_list))+"/"+str(len(svr_list))+" true.", ;
 			print "total usable proxy ip num: "+str(len(self.proxy_list));
 
 			cur_page = cur_page + 1;
 			
 			end_time = time.time();
 			if (end_time - start_time < 1.0):
-				time.sleep(end_time - start_time);
-						
+				time.sleep(1.0 - end_time + start_time);
 	
 	def export_proxy(self, file_name):
 		f = open(file_name, 'wb');
@@ -221,5 +223,5 @@ class ProxyPool():
 		f.close();
 		
 pool = ProxyPool("proxy_list");
-pool.update_proxy(False, 400, 4);
+pool.update_proxy(False, 400, 30);
 pool.export_proxy("proxy_list");
