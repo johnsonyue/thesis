@@ -116,9 +116,11 @@ class ProxyPool():
 		opener = urllib2.build_opener(urllib2.ProxyHandler({"http":proxy}));
 		code = 0;
 		res = False;
+		ex = None;
 		try:
-			code = opener.open(self.test_url, timeout = 10).getcode();
-		except:
+			code = opener.open(self.test_url).getcode();
+		except Exception as e:
+			ex = e;
 			res = False;
 
 		if (code == 200):
@@ -127,7 +129,9 @@ class ProxyPool():
 		if (ind != -1):
 			res_list[ind] = res;
 		
-		print (server+" "+str(res)); 
+		print (server+" "+str(res)),; 
+		print "" if ex == None else ex;
+
 		return res;
 
 	def test_list(self, svr_list, mt_num=1):
@@ -223,5 +227,5 @@ class ProxyPool():
 		f.close();
 		
 pool = ProxyPool("proxy_list");
-pool.update_proxy(False, 400, 30);
+pool.update_proxy(True, 400, 30);
 pool.export_proxy("proxy_list");
