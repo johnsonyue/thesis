@@ -118,3 +118,78 @@ def get_time_list(list_file_name, time):
 		return None;
 
 	return res;
+
+#must be of the same length.
+def time_cmp(t1, t2):
+	for i in range(len(t1)):
+		if (t1[i] != t2[i]):
+			break;
+	if (i < len(t1)):
+		return int(t1[i]) - int(t2[i]);
+	return 0;
+
+def update_caida_tree(file_name, dir, username, password):
+	f = open(file_name, 'rb');
+	old_time = "00000000";
+	for line in f.readlines():
+		time = line.split('/')[-2].split('-')[1];
+		if (time_cmp(time ,old_time) > 0):
+			old_time = time;
+	f.close();
+
+	url = "https://topo-data.caida.org/team-probing/list-7.allpref24/";
+	passwd_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm();
+	passwd_mgr.add_password("topo-data", url, username, password);
+
+	file = open("caida",'a');
+	opener = urllib2.build_opener(urllib2.HTTPBasicAuthHandler(passwd_mgr));
+	team_dir = ["team-1/daily/", "team-2/daily/", "team-3/daily/"]; 
+
+	for t in team_dir:
+		f = opener.open(url+t);
+		text = f.read();
+		parser = CaidaParser();
+		parser.feed(text);
+		
+		team = t.split('/')[0];
+		old_year = old_time[:4];
+	
+		for e in parser.dir:
+			if(time_cmp(e.strip('/'), old_year) >= 0):
+				update_year_dir(old_time, url+t+e, dir+team+"/", opener, file);
+	
+	file.close();
+
+	return "";
+
+def update_year_dir(old_time, url, dir, opener, file):
+	f = opener.open(url);
+	text = f.read();
+	
+	parser = CaidaParser();
+	parser.feed(text);
+
+	for e in parser.dir:
+		time = e.split('-')[1].strip('/');
+		if (time_cmp(time, old_time) > 0):
+			update_time_dir(url+e, dir, opener, file);
+
+	return "";
+
+def update_time_dir(url, dir, opener, file):
+	f = opener.open(url);
+	text = f.read();
+	
+	parser = CaidaParser();
+	parser.feed(text);
+
+	for e in parser.file:
+		if ( len(e.split('.')) != 8 ):
+			continue;
+		time = e.split('.')[4];
+		node = e.split('.')[5];
+		node_dir = dir+time+"/"+node+"/";
+		file.write(node_dir+":"+url+e+'\n');
+		print node_dir;
+
+update_caida_tree("caida", "", "15b903031@hit.edu.cn", "yuzhuoxun123");
